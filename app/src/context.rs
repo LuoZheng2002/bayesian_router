@@ -3,8 +3,10 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use shared::pcb_render_model::PcbRenderModel;
+
 use crate::{
-    input_context::InputContext, pcb_render_model::PcbRenderModel, render_context::RenderContext,
+    input_context::InputContext, render_context::RenderContext,
     state::State,
 };
 

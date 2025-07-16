@@ -12,7 +12,7 @@ pub struct ProbaTraceID(pub usize);
 
 #[derive(Debug)]
 pub struct ProbaTrace {
-    pub net_id: NetName,                        // The net that the trace belongs to
+    pub net_name: NetName,                        // The net that the trace belongs to
     pub connection_id: ConnectionID,          // The connection that the trace belongs to
     pub proba_trace_id: ProbaTraceID,         // Unique identifier for the trace
     pub trace_path: TracePath,                // The path of the trace
@@ -119,10 +119,10 @@ impl ProbaModel {
         let mut connections: HashMap<ConnectionID, Rc<Connection>> = HashMap::new();
         // connection_id to net_id
         let mut connection_to_net: HashMap<ConnectionID, NetName> = HashMap::new();
-        for (net_id, net_info) in problem.nets.iter() {
+        for (net_name, net_info) in problem.nets.iter() {
             for (connection_id, connection) in net_info.connections.iter() {
                 connections.insert(*connection_id, connection.clone());
-                connection_to_net.insert(*connection_id, *net_id);
+                connection_to_net.insert(*connection_id, net_name.clone());
             }
         }
 
@@ -143,7 +143,7 @@ impl ProbaModel {
         let mut net_to_proba_traces: HashMap<NetName, Vec<ProbaTraceID>> = problem
             .nets
             .keys()
-            .map(|net_id| (*net_id, Vec::new()))
+            .map(|net_name| (net_name.clone(), Vec::new()))
             .collect();
         for (connection_id, traces) in self.connection_to_traces.iter() {
             if let Traces::Probabilistic(trace_ids) = traces {
@@ -189,14 +189,26 @@ impl ProbaModel {
         }
 
         // the outer loop for generating the dijkstra model
-        for net_id in problem.nets.keys() {
+        for (net_name, net_info) in problem.nets.iter() {
             // collect connections that are not in this net
             let obstacle_connections: HashSet<ConnectionID> = problem
                 .nets
                 .iter()
-                .filter(|(other_net_id, _)| **other_net_id != *net_id)
+                .filter(|(other_net_id, _)| **other_net_id != *net_name)
                 .flat_map(|(_, net_info)| net_info.connections.keys())
                 .cloned()
+                .collect();
+            let obstacle_source_pad_shapes: Vec<PrimShape> = problem
+                .nets
+                .iter()
+                .filter(|(other_net_id, _)| **other_net_id != *net_name)
+                .flat_map(|(_, net_info)| net_info.source.to_shapes())
+                .collect();
+            let obstacle_source_pad_clearance_shapes: Vec<PrimShape> = problem
+                .nets
+                .iter()
+                .filter(|(other_net_id, _)| **other_net_id != *net_name)
+                .flat_map(|(_, net_info)| net_info.source.to_clearance_shapes())
                 .collect();
             // initialize the number of generated traces for each connection
             let mut num_generated_traces: HashMap<ConnectionID, usize> = self
@@ -273,6 +285,9 @@ impl ProbaModel {
                 }
                 let mut obstacle_shapes: Vec<PrimShape> = Vec::new();
                 let mut obstacle_clearance_shapes: Vec<PrimShape> = Vec::new();
+
+                obstacle_shapes.extend(obstacle_source_pad_shapes.clone());
+                obstacle_clearance_shapes.extend(obstacle_source_pad_clearance_shapes.clone());
                 // add fixed traces to the obstacle shapes
                 for obstacle_connection_id in obstacle_connections.iter() {
                     let traces = self
@@ -331,9 +346,7 @@ impl ProbaModel {
                         )
                         .as_str(),
                     );
-                    let source_pad_shapes = connection.source.to_shapes();
                     let sink_pad_shapes = connection.sink.to_shapes();
-                    obstacle_shapes.extend(source_pad_shapes);
                     obstacle_shapes.extend(sink_pad_shapes);
                 }
                 let mut astar_model = AStarModel {
@@ -355,8 +368,8 @@ impl ProbaModel {
                 };
                 let connections = &problem
                     .nets
-                    .get(net_id)
-                    .expect(format!("NetID {:?} not found in nets", net_id).as_str())
+                    .get(net_name)
+                    .expect(format!("NetID {:?} not found in nets", net_name).as_str())
                     .connections;
                 // only consider connections with probabilistic traces
                 let connections: Vec<(ConnectionID, Rc<Connection>)> = connections
@@ -396,7 +409,7 @@ impl ProbaModel {
                     }
                     // sample a trace for this connection
                     astar_model.start = {
-                        let mut start = connection.source.position.to_fixed();
+                        let mut start = net_info.source.position.to_fixed();
                         if (start.x - start.y).to_bits() % 2 == 1 {
                             start.x += FixedPoint::DELTA; // Ensure the start point is even
                         }
@@ -409,8 +422,8 @@ impl ProbaModel {
                         }
                         end
                     };
-                    astar_model.trace_width = connection.trace_width;
-                    astar_model.trace_clearance = connection.trace_clearance;
+                    astar_model.trace_width = connection.sink_trace_width;
+                    astar_model.trace_clearance = connection.sink_trace_clearance;
 
                     // run A* algorithm to find a path
                     let astar_result = astar_model.run(pcb_render_model.clone());
@@ -435,7 +448,7 @@ impl ProbaModel {
                         .next()
                         .expect("TraceID generator exhausted");
                     let proba_trace = ProbaTrace {
-                        net_id: *net_id,
+                        net_name: net_name.clone(),
                         connection_id: *connection_id,
                         proba_trace_id,
                         trace_path,
@@ -502,7 +515,7 @@ impl ProbaModel {
         let mut net_to_proba_traces: HashMap<NetName, Vec<ProbaTraceID>> = problem
             .nets
             .keys()
-            .map(|net_id| (*net_id, Vec::new()))
+            .map(|net_name| (net_name.clone(), Vec::new()))
             .collect();
         for (connection_id, traces) in self.connection_to_traces.iter() {
             if let Traces::Probabilistic(trace_ids) = traces {
@@ -574,6 +587,15 @@ impl ProbaModel {
         let mut trace_shape_renderables: Vec<RenderableBatch> = Vec::new();
         let mut pad_shape_renderables: Vec<ShapeRenderable> = Vec::new();
         for (_, net_info) in problem.nets.iter() {
+            // add source pad
+            let source_renderables = net_info
+                .source
+                .to_renderables(net_info.color.to_float4(1.0));
+            let source_clearance_renderables = net_info
+                .source
+                .to_clearance_renderables(net_info.color.to_float4(0.5));
+            pad_shape_renderables.extend(source_renderables);
+            pad_shape_renderables.extend(source_clearance_renderables);
             for (_, connection) in net_info.connections.iter() {
                 // Add fixed traces
                 if let Some(Traces::Fixed(fixed_trace)) =
@@ -595,21 +617,12 @@ impl ProbaModel {
                         trace_shape_renderables.extend(renderable_batches);
                     }
                 }
-                // Add pads
-                let source_renderables = connection
-                    .source
-                    .to_renderables(net_info.color.to_float4(1.0));
-                let source_clearance_renderables = connection
-                    .source
-                    .to_clearance_renderables(net_info.color.to_float4(0.5));
                 let sink_renderables = connection
                     .sink
                     .to_renderables(net_info.color.to_float4(1.0));
                 let sink_clearance_renderables = connection
                     .sink
-                    .to_clearance_renderables(net_info.color.to_float4(0.5));
-                pad_shape_renderables.extend(source_renderables);
-                pad_shape_renderables.extend(source_clearance_renderables);
+                    .to_clearance_renderables(net_info.color.to_float4(0.5));                
                 pad_shape_renderables.extend(sink_renderables);
                 pad_shape_renderables.extend(sink_clearance_renderables);
             }

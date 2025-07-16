@@ -1,9 +1,10 @@
 use std::{sync::{Arc, Mutex}, time::Instant};
 
 use cgmath::{Euler, Quaternion};
+use shared::{pcb_render_model::PcbRenderModel, prim_shape::{CircleShape, PrimShape, RectangleShape}};
 
 use crate::{
-    orthographic_camera::OrthographicCamera, pad::PadShape, pcb_render_model::{self, PcbRenderModel}, prim_shape::{CircleShape, PrimShape, RectangleShape}, render_context::RenderContext, shape_instance::ShapeInstance, shape_mesh::ShapeMesh, transparent_pipeline::TransparentShapeBatch
+    orthographic_camera::OrthographicCamera, render_context::RenderContext, shape_instance::ShapeInstance, shape_mesh::ShapeMesh, transparent_pipeline::TransparentShapeBatch
 };
 
 // model path,

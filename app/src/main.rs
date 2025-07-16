@@ -1,4 +1,4 @@
-use pcb_routing_wgpu3::app::App;
+use app::app::App;
 use winit::event_loop::{ControlFlow, EventLoop};
 
 fn main() {

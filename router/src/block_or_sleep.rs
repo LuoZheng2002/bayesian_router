@@ -1,5 +1,5 @@
-use crate::hyperparameters::BLOCK_THREAD;
-use crate::hyperparameters::DISPLAY_PERIOD_MILLIS;
+use shared::hyperparameters::BLOCK_THREAD;
+use shared::hyperparameters::DISPLAY_PERIOD_MILLIS;
 
 
 

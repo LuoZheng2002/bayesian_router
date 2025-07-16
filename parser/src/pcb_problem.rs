@@ -24,7 +24,6 @@ pub struct Connection {
     pub sink: Pad,
     pub sink_trace_width: f32, // Width of the trace
     pub sink_trace_clearance: f32, // Clearance around the trace
-    // pub traces: HashMap<TraceID, TraceInfo>, // List of traces connecting the source and sink pads
 }
 
 #[derive(Debug, Clone)]

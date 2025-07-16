@@ -140,6 +140,7 @@ dependencies = [
  "ordered-float 5.0.0",
  "rand",
  "router",
+ "shared",
  "wgpu",
  "winit",
 ]

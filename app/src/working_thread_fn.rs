@@ -2,18 +2,13 @@ use std::sync::{Arc, Mutex};
 
 use cgmath::Deg;
 
-use crate::{
-    pad::{Pad, PadShape},
-    pcb_problem::{self, Color, PcbProblem},
-    pcb_render_model::{self, PcbRenderModel},
-    vec2::FloatVec2,
-};
-use router::pcb_problem1;
+use router::{pcb_problem_solve::solve_pcb_problem, test_pcb_problem::pcb_problem1};
+use shared::pcb_render_model::PcbRenderModel;
 
 pub fn working_thread_fn(pcb_render_model: Arc<Mutex<PcbRenderModel>>) {
     println!("Working thread started");
     let pcb_problem = pcb_problem1();
-    let result = pcb_problem.solve(pcb_render_model.clone());
+    let result = solve_pcb_problem(&pcb_problem, pcb_render_model.clone());
     match result {
         Ok(_) => {
             println!("PCB problem solved successfully");

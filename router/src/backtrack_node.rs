@@ -1,9 +1,9 @@
-use std::{collections::BinaryHeap, rc::Rc};
+use std::{collections::{BinaryHeap, HashMap}, rc::Rc, sync::{Arc, Mutex}};
 
 use ordered_float::NotNan;
-use shared::binary_heap_item::BinaryHeapItem;
+use shared::{binary_heap_item::BinaryHeapItem, pcb_problem::{ConnectionID, FixedTrace, PcbProblem}, pcb_render_model::PcbRenderModel};
 
-use crate::proba_model::ProbaTrace;
+use crate::proba_model::{ProbaModel, ProbaTrace, Traces};
 
 
 
@@ -86,7 +86,7 @@ impl BacktrackNode {
         let connection_id = top_ranked_candidate.value.connection_id;
         // Create a new fixed trace
         let fixed_trace = FixedTrace {
-            net_id: top_ranked_candidate.value.net_id,
+            net_name: top_ranked_candidate.value.net_name.clone(),
             connection_id,
             trace_path: top_ranked_trace_path.clone(),
         };
@@ -150,7 +150,7 @@ impl BacktrackNode {
                 let connection_id = top_ranked_candidate.value.connection_id;
                 // Create a new fixed trace
                 let fixed_trace = FixedTrace {
-                    net_id: top_ranked_candidate.value.net_id,
+                    net_name: top_ranked_candidate.value.net_name.clone(),
                     connection_id,
                     trace_path: top_ranked_trace_path.clone(),
                 };

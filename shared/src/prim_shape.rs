@@ -17,7 +17,7 @@ pub struct RectangleShape {
 }
 
 impl RectangleShape {
-    pub fn to_polygon(&self) -> Polygon {
+    pub fn to_polygon(&self) -> PolygonForCollision {
         let hw = self.width / 2.0;
         let hh = self.height / 2.0;
 
@@ -48,18 +48,27 @@ impl RectangleShape {
             })
             .collect();
 
-        Polygon(rotated_corners)
+        PolygonForCollision(rotated_corners)
     }
 }
+
+
+/// polygon is used only for collision detection, not for rendering
+#[derive(Debug, Clone)]
+pub struct PolygonForCollision(pub Vec<FloatVec2>);
+
+#[derive(Debug, Clone)]
+pub struct LineForCollision{
+    pub start: FloatVec2,
+    pub end: FloatVec2,
+}
+
 
 #[derive(Debug, Clone)]
 pub enum PrimShape {
     Circle(CircleShape),
     Rectangle(RectangleShape),
 }
-
-#[derive(Debug, Clone)]
-pub struct Polygon(pub Vec<FloatVec2>);
 
 impl PrimShape {
 
@@ -76,7 +85,7 @@ impl PrimShape {
         Self::polygons_collide(&rect1_polygon, &rect2_polygon)
     }
     /// Projects a polygon onto an axis and returns the min and max projection scalars
-    fn project_polygon(polygon: &Polygon, axis: FloatVec2) -> (f32, f32) {
+    fn project_polygon(polygon: &PolygonForCollision, axis: FloatVec2) -> (f32, f32) {
         let mut min = polygon.0[0].dot(axis);
         let mut max = min;
 
@@ -104,7 +113,7 @@ impl PrimShape {
     }
 
     /// Main SAT collision detection function
-    fn polygons_collide(poly1: &Polygon, poly2: &Polygon) -> bool {
+    fn polygons_collide(poly1: &PolygonForCollision, poly2: &PolygonForCollision) -> bool {
         // Check axes from polygon 1
         for i in 0..poly1.0.len() {
             let edge = poly1.0[(i + 1) % poly1.0.len()].sub(poly1.0[i]);
@@ -134,8 +143,8 @@ impl PrimShape {
     }
 
     /// Main function: Polygon vs Circle collision
-    pub fn polygon_circle_collide(polygon: &Polygon, circle: &CircleShape) -> bool {
-        let Polygon(ref verts) = *polygon;
+    pub fn polygon_circle_collide(polygon: &PolygonForCollision, circle: &CircleShape) -> bool {
+        let PolygonForCollision(ref verts) = *polygon;
         let radius = circle.diameter / 2.0;
 
         // 1. Check all polygon edge normals

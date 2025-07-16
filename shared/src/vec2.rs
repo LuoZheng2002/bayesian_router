@@ -98,3 +98,14 @@ impl FloatVec2 {
         self.x * self.x + self.y * self.y
     }
 }
+
+impl Add for FloatVec2 {
+    type Output = FloatVec2;
+
+    fn add(self, other: FloatVec2) -> FloatVec2 {
+        FloatVec2 {
+            x: self.x + other.x,
+            y: self.y + other.y,
+        }
+    }
+}

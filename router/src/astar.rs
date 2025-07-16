@@ -14,9 +14,7 @@ use crate::{
 };
 
 use shared::{
-    prim_shape::{CircleShape, PrimShape, RectangleShape},
-    pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel},
-    vec2::{FixedPoint, FixedVec2, FloatVec2},
+    binary_heap_item::BinaryHeapItem, hyperparameters::{ASTAR_STRIDE, DISPLAY_ASTAR, ESTIMATE_COEFFICIENT}, pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel}, prim_shape::{CircleShape, PrimShape, RectangleShape}, trace_path::{Direction, TraceAnchors, TracePath, TraceSegment}, vec2::{FixedPoint, FixedVec2, FloatVec2}
 };
 
 pub struct AStarModel {
