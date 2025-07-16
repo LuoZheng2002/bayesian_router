@@ -116,7 +116,7 @@ impl PrimShape {
     fn polygons_collide(poly1: &PolygonForCollision, poly2: &PolygonForCollision) -> bool {
         // Check axes from polygon 1
         for i in 0..poly1.0.len() {
-            let edge = poly1.0[(i + 1) % poly1.0.len()].sub(poly1.0[i]);
+            let edge = poly1.0[(i + 1) % poly1.0.len()] - poly1.0[i];
             let axis = edge.perp().normalize();
 
             let (min_a, max_a) = Self::project_polygon(poly1, axis);
@@ -129,7 +129,7 @@ impl PrimShape {
 
         // Check axes from polygon 2
         for i in 0..poly2.0.len() {
-            let edge = poly2.0[(i + 1) % poly2.0.len()].sub(poly2.0[i]);
+            let edge = poly2.0[(i + 1) % poly2.0.len()] - poly2.0[i];
             let axis = edge.perp().normalize();
 
             let (min_a, max_a) = Self::project_polygon(poly1, axis);
@@ -151,7 +151,7 @@ impl PrimShape {
         for i in 0..verts.len() {
             let a = verts[i];
             let b = verts[(i + 1) % verts.len()];
-            let edge = b.sub(a);
+            let edge = b - a;
             // let normal = Vector2::new(-edge.y, edge.x).normalize();
             let normal = edge.perp().normalize();
 
@@ -168,14 +168,14 @@ impl PrimShape {
         let mut closest_vertex = verts[0];
 
         for &v in verts {
-            let dist_sq = v.sub(circle.position).magnitude2();
+            let dist_sq = (v- circle.position).magnitude2();
             if dist_sq < min_distance_sq {
                 min_distance_sq = dist_sq;
                 closest_vertex = v;
             }
         }
 
-        let axis_to_vertex = (closest_vertex.sub(circle.position)).normalize();
+        let axis_to_vertex = (closest_vertex - circle.position).normalize();
 
         let (min_poly, max_poly) = Self::project_polygon(polygon, axis_to_vertex);
         let (min_circ, max_circ) = Self::project_circle(circle.position, radius, axis_to_vertex);

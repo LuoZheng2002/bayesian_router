@@ -71,12 +71,6 @@ impl FloatVec2 {
         self.x * other.x + self.y * other.y
     }
 
-    pub fn sub(self, other: FloatVec2) -> FloatVec2 {
-        FloatVec2 {
-            x: self.x - other.x,
-            y: self.y - other.y,
-        }
-    }
 
     /// Returns a vector perpendicular to self (normal to edge)
     pub fn perp(self) -> FloatVec2 {
@@ -101,6 +95,9 @@ impl FloatVec2 {
     pub fn magnitude2(self) -> f32 {
         self.x * self.x + self.y * self.y
     }
+    pub fn length(self)->f32{
+        (self.x * self.x + self.y * self.y).sqrt()
+    }
 }
 
 impl Add for FloatVec2 {
@@ -110,6 +107,16 @@ impl Add for FloatVec2 {
         FloatVec2 {
             x: self.x + other.x,
             y: self.y + other.y,
+        }
+    }
+}
+impl Sub for FloatVec2 {
+    type Output = FloatVec2;
+
+    fn sub(self, other: FloatVec2) -> FloatVec2 {
+        FloatVec2 {
+            x: self.x - other.x,
+            y: self.y - other.y,
         }
     }
 }

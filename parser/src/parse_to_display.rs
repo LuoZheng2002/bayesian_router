@@ -8,7 +8,7 @@ use shared::pad::{Pad, PadName, PadShape};
 use shared::pcb_problem::{NetClassName, NetName};
 use shared::prim_shape::{LineForCollision, PolygonForCollision};
 use shared::vec2::{FixedVec2, FloatVec2};
-use core::net;
+use core::{f32, net};
 use std::collections::HashMap;
 
 fn calculate_boundary(boundary: &Boundary) -> Result<(f32, f32, FloatVec2), String> {
@@ -94,9 +94,141 @@ fn transform_point(point: FloatVec2, rotation_deg: f32, translation: FloatVec2) 
     let rotated = mat * vec;
     FloatVec2::new(rotated.x + translation.x, rotated.y + translation.y)
 }
+/// Golden section search for 1D minimization.
+/// f: objective function
+/// x_start: lower bound
+/// x_end: upper bound
+/// tol: tolerance for stopping condition
+fn golden_section_search<F>(f: F, x_start: f32, x_end: f32, num_iterations: usize) -> f32
+where
+    F: Fn(f32) -> f32,
+{
+    let phi = (1.0 + 5.0_f32.sqrt()) / 2.0;
+    let resphi = 2.0 - phi; // 1 - (1/phi)
+
+    let mut a = x_start;
+    let mut b = x_end;
+
+    let mut c = b - resphi * (b - a);
+    let mut d = a + resphi * (b - a);
+
+    let mut fc = f(c);
+    let mut fd = f(d);
+
+    for _ in 0..num_iterations {
+        if fc < fd {
+            b = d;
+            d = c;
+            fd = fc;
+            c = b - resphi * (b - a);
+            fc = f(c);
+        } else {
+            a = c;
+            c = d;
+            fc = fd;
+            d = a + resphi * (b - a);
+            fd = f(d);
+        }
+    }
+
+    (a + b) / 2.0
+}
+
+fn distance_to_round_rect(
+    point: FloatVec2,
+    width: f32,
+    height: f32,
+    corner_radius: f32,
+) -> f32 {
+    let right_threashold = width / 2.0 - corner_radius;
+    let left_threashold = -right_threashold;
+    let top_threashold = height / 2.0 - corner_radius;
+    let bottom_threashold = -top_threashold;
+    let horizontal_ordering = if point.x > right_threashold {
+        std::cmp::Ordering::Greater
+    } else if point.x < left_threashold {
+        std::cmp::Ordering::Less
+    } else {
+        std::cmp::Ordering::Equal
+    };
+    let vertical_ordering = if point.y > top_threashold {
+        std::cmp::Ordering::Greater
+    } else if point.y < bottom_threashold {
+        std::cmp::Ordering::Less
+    } else {
+        std::cmp::Ordering::Equal
+    };
+    match (horizontal_ordering, vertical_ordering) {
+        (std::cmp::Ordering::Less, std::cmp::Ordering::Less) => {
+            let top_left_corner = FloatVec2::new(left_threashold, top_threashold);
+            ((point - top_left_corner).length() - corner_radius).abs()
+        },
+        (std::cmp::Ordering::Greater, std::cmp::Ordering::Less) => {
+            let top_right_corner = FloatVec2::new(right_threashold, top_threashold);
+            ((point - top_right_corner).length() - corner_radius).abs()
+        }
+        (std::cmp::Ordering::Less, std::cmp::Ordering::Greater) => {
+            let bottom_left_corner = FloatVec2::new(left_threashold, bottom_threashold);
+            ((point - bottom_left_corner).length() - corner_radius).abs()
+        }
+        (std::cmp::Ordering::Greater, std::cmp::Ordering::Greater) => {
+            let bottom_right_corner = FloatVec2::new(right_threashold, bottom_threashold);
+            ((point - bottom_right_corner).length() - corner_radius).abs()
+        }
+        (std::cmp::Ordering::Less, std::cmp::Ordering::Equal) => {
+            (point.x - left_threashold).abs()
+        }
+        (std::cmp::Ordering::Greater, std::cmp::Ordering::Equal) => {
+            (point.x - right_threashold).abs()
+        }
+        (std::cmp::Ordering::Equal, std::cmp::Ordering::Less) => {
+            (point.y - bottom_threashold).abs()
+        }
+        (std::cmp::Ordering::Equal, std::cmp::Ordering::Greater) => {
+            (point.y - top_threashold).abs()
+        }
+        _=>{
+            let horizontal_min = f32::min(
+                (point.x - left_threashold).abs(),
+                (point.x - right_threashold).abs(),
+            );
+            let vertical_min = f32::min(
+                (point.y - bottom_threashold).abs(),
+                (point.y - top_threashold).abs(),
+            );
+            f32::min(horizontal_min, vertical_min)
+        }
+    }
+}
 
 fn vertices_to_round_rect(vertices: &Vec<FloatVec2>)->PadShape{
-    todo!("Convert vertices to round rectangle shape");
+    let mut x_max = f32::MIN;
+    let mut x_min = f32::MAX;
+    let mut y_max = f32::MIN;
+    let mut y_min = f32::MAX;
+    for vertex in vertices {
+        x_max = x_max.max(vertex.x);
+        x_min = x_min.min(vertex.x);
+        y_max = y_max.max(vertex.y);
+        y_min = y_min.min(vertex.y);
+    }
+    let width = x_max - x_min;
+    let height = y_max - y_min;
+    let min_corner_radius: f32 = 0.0;
+    let max_corner_radius = f32::min(width, height) / 2.0;
+    let distance_to_round_rect_closure = |corner_radius: f32| {
+        let mut distance_sum = 0.0;
+        for vertex in vertices {
+            distance_sum += distance_to_round_rect(*vertex, width, height, corner_radius);
+        }
+        distance_sum
+    };
+    let corner_radius = golden_section_search(distance_to_round_rect_closure, min_corner_radius, max_corner_radius, 100);
+    PadShape::RoundRect {
+        width,
+        height,
+        corner_radius,
+    }
 }
 
 fn convert_shape(shape: &Shape) -> Result<PadShape, String> {
@@ -121,11 +253,8 @@ fn convert_shape(shape: &Shape) -> Result<PadShape, String> {
                 return Err("Polygon must have at least 3 vertices".to_string());
             }
             // For simplicity, we treat the polygon as a round rectangle
-            Ok(PadShape::RoundRect {
-                width: 10000.0,
-                height: 10000.0, // Assuming square for simplicity
-                corner_radius: 2000.0,             // Not specified in the original code
-            })
+            let round_rect_shape = vertices_to_round_rect(vertices);
+            Ok(round_rect_shape)
         }
     }
 }
