@@ -1,4 +1,3 @@
-pub mod distinct_color_generator;
 pub mod dsn_struct;
 pub mod parse_to_display;
 pub mod parse_to_display_format;

@@ -295,6 +295,5 @@ pub fn dsn_to_display(dsn: &DsnStruct) -> Result<DisplayFormat, String> {
         obstacle_polygons,
         nets: net_info,
     };
-
-    todo!("Implement dsn_to_display function");
+    Ok(display_format)
 }
