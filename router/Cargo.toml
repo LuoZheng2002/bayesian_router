@@ -16,3 +16,4 @@ rand = "0.9.1"
 wgpu = "25.0.2"
 winit = "0.30.11"
 shared={path="../shared"}
+plotters = "0.3.4"
