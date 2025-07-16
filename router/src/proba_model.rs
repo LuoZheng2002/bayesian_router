@@ -1,7 +1,7 @@
 use std::{cell::RefCell, collections::{BTreeSet, HashMap, HashSet}, num::NonZeroUsize, rc::Rc, sync::{Arc, Mutex}};
 
 use rand::distr::{weighted::WeightedIndex, Distribution};
-use shared::{hyperparameters::{CONSTANT_LEARNING_RATE, ITERATION_TO_NUM_TRACES, ITERATION_TO_PRIOR_PROBABILITY, LINEAR_LEARNING_RATE, MAX_GENERATION_ATTEMPTS, NEXT_ITERATION_TO_REMAINING_PROBABILITY, OPPORTUNITY_COST_WEIGHT, SCORE_WEIGHT}, pcb_problem::{Connection, ConnectionID, FixedTrace, NetID, PcbProblem}, pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel}, prim_shape::PrimShape, trace_path::{TraceAnchors, TracePath}, vec2::{FixedPoint, FixedVec2}};
+use shared::{hyperparameters::{CONSTANT_LEARNING_RATE, ITERATION_TO_NUM_TRACES, ITERATION_TO_PRIOR_PROBABILITY, LINEAR_LEARNING_RATE, MAX_GENERATION_ATTEMPTS, NEXT_ITERATION_TO_REMAINING_PROBABILITY, OPPORTUNITY_COST_WEIGHT, SCORE_WEIGHT}, pcb_problem::{Connection, ConnectionID, FixedTrace, NetName, PcbProblem}, pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel}, prim_shape::PrimShape, trace_path::{TraceAnchors, TracePath}, vec2::{FixedPoint, FixedVec2}};
 
 use crate::{astar::AStarModel, block_or_sleep::{block_or_sleep, block_thread}};
 
@@ -12,7 +12,7 @@ pub struct ProbaTraceID(pub usize);
 
 #[derive(Debug)]
 pub struct ProbaTrace {
-    pub net_id: NetID,                        // The net that the trace belongs to
+    pub net_id: NetName,                        // The net that the trace belongs to
     pub connection_id: ConnectionID,          // The connection that the trace belongs to
     pub proba_trace_id: ProbaTraceID,         // Unique identifier for the trace
     pub trace_path: TracePath,                // The path of the trace
@@ -118,7 +118,7 @@ impl ProbaModel {
         // connection_id to connection
         let mut connections: HashMap<ConnectionID, Rc<Connection>> = HashMap::new();
         // connection_id to net_id
-        let mut connection_to_net: HashMap<ConnectionID, NetID> = HashMap::new();
+        let mut connection_to_net: HashMap<ConnectionID, NetName> = HashMap::new();
         for (net_id, net_info) in problem.nets.iter() {
             for (connection_id, connection) in net_info.connections.iter() {
                 connections.insert(*connection_id, connection.clone());
@@ -140,7 +140,7 @@ impl ProbaModel {
         }
 
         // net_id to proba_trace_ids
-        let mut net_to_proba_traces: HashMap<NetID, Vec<ProbaTraceID>> = problem
+        let mut net_to_proba_traces: HashMap<NetName, Vec<ProbaTraceID>> = problem
             .nets
             .keys()
             .map(|net_id| (*net_id, Vec::new()))
@@ -499,7 +499,7 @@ impl ProbaModel {
             .map(|(proba_trace_id, _)| (*proba_trace_id, HashSet::new()))
             .collect();
         // update net_to_proba_traces to include the new traces
-        let mut net_to_proba_traces: HashMap<NetID, Vec<ProbaTraceID>> = problem
+        let mut net_to_proba_traces: HashMap<NetName, Vec<ProbaTraceID>> = problem
             .nets
             .keys()
             .map(|net_id| (*net_id, Vec::new()))

@@ -1,21 +1,10 @@
-use core::panic;
 use std::{
-    cell::RefCell,
-    collections::{BTreeSet, BinaryHeap, HashMap, HashSet},
-    num::NonZeroUsize,
+    collections::HashMap,
     rc::Rc,
-    sync::{Arc, Mutex},
 };
 
-use ordered_float::NotNan;
-
-
 use crate::{
-    binary_heap_item::BinaryHeapItem, hyperparameters::{
-        CONSTANT_LEARNING_RATE, ITERATION_TO_NUM_TRACES, ITERATION_TO_PRIOR_PROBABILITY,
-        LINEAR_LEARNING_RATE, MAX_GENERATION_ATTEMPTS, NEXT_ITERATION_TO_REMAINING_PROBABILITY,
-        OPPORTUNITY_COST_WEIGHT, SCORE_WEIGHT,
-    }, pad::Pad, pcb_render_model::{PcbRenderModel, UpdatePcbRenderModel}, trace_path::TracePath
+    color_float3::ColorFloat3, pad::Pad, trace_path::TracePath
 };
 
 // use shared::interface_types::{Color, ColorGrid};
@@ -24,7 +13,7 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct Connection {
-    pub net_id: NetID,               // The net that the connection belongs to
+    pub net_name: NetName,               // The net that the connection belongs to
     pub connection_id: ConnectionID, // Unique identifier for the connection
     pub source: Pad,
     pub sink: Pad,
@@ -35,13 +24,15 @@ pub struct Connection {
 
 #[derive(Debug, Clone)]
 pub struct NetInfo {
-    pub net_id: NetID,
-    pub color: Color,                                       // Color of the net
+    pub net_id: NetName,
+    pub color: ColorFloat3,                                       // Color of the net
     pub connections: HashMap<ConnectionID, Rc<Connection>>, // List of connections in the net, the source pad is the same
 }
 
-#[derive(Copy, Debug, Clone, PartialEq, Hash, Eq, PartialOrd, Ord)]
-pub struct NetID(pub usize);
+#[derive(Debug, Clone, PartialEq, Hash, Eq, PartialOrd, Ord)]
+pub struct NetName(pub String);
+#[derive(Debug, Clone, PartialEq, Hash, Eq, PartialOrd, Ord)]
+pub struct NetClassName(pub String);
 #[derive(Copy, Debug, Clone, PartialEq, Hash, Eq, PartialOrd, Ord)]
 pub struct ConnectionID(pub usize);
 
@@ -56,15 +47,15 @@ pub struct ConnectionID(pub usize);
 pub struct PcbProblem {
     pub width: f32,
     pub height: f32,
-    pub nets: HashMap<NetID, NetInfo>, // NetID to NetInfo
-    pub net_id_generator: Box<dyn Iterator<Item = NetID> + Send + 'static>, // A generator for NetID, starting from 0
+    pub nets: HashMap<NetName, NetInfo>, // NetID to NetInfo
+    pub net_id_generator: Box<dyn Iterator<Item = NetName> + Send + 'static>, // A generator for NetID, starting from 0
     pub connection_id_generator: Box<dyn Iterator<Item = ConnectionID> + Send + 'static>, // A generator for ConnectionID, starting from 0
 }
 
 
 #[derive(Debug, Clone)]
 pub struct FixedTrace {
-    pub net_id: NetID,               // The net that the trace belongs to
+    pub net_id: NetName,               // The net that the trace belongs to
     pub connection_id: ConnectionID, // The connection that the trace belongs to
     pub trace_path: TracePath,
 }
@@ -75,7 +66,7 @@ pub struct PcbSolution {
 
 impl PcbProblem {
     pub fn new(width: f32, height: f32) -> Self {
-        let net_id_generator = Box::new((0..).map(NetID));
+        let net_id_generator = Box::new((0..).map(NetName));
         let connection_id_generator = Box::new((0..).map(ConnectionID));
         PcbProblem {
             width,
@@ -85,13 +76,8 @@ impl PcbProblem {
             connection_id_generator,
         }
     }
-    pub fn add_net(&mut self, color: Color) -> NetID {
-        let duplicate_color = self.nets.values().any(|net_info| net_info.color == color);
-        assert!(
-            !duplicate_color,
-            "Net with color {:?} already exists",
-            color
-        );
+    pub fn add_net(&mut self, color: ColorFloat3) -> NetName {
+        
         let net_id = self
             .net_id_generator
             .next()
@@ -107,7 +93,7 @@ impl PcbProblem {
     /// assert the sources in the same net are the same
     pub fn add_connection(
         &mut self,
-        net_id: NetID,
+        net_id: NetName,
         source: Pad,
         sink: Pad,
         trace_width: f32,
@@ -119,7 +105,7 @@ impl PcbProblem {
             .next()
             .expect("ConnectionID generator exhausted");
         let connection = Connection {
-            net_id,
+            net_name: net_id,
             connection_id,
             source,
             sink,
