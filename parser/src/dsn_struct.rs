@@ -57,7 +57,7 @@ pub enum Shape{
     },
     Polygon{
         aperture_width: f64,
-        vertices: Vec<(f64, f64)>,
+        vertices: Vec<FloatVec2>,
     }
 }
 pub struct PadStack{

@@ -20,6 +20,7 @@ use shared::{
 pub struct AStarModel {
     pub width: f32,
     pub height: f32,
+    pub center: FloatVec2,
     pub obstacle_shapes: Vec<PrimShape>,
     pub obstacle_clearance_shapes: Vec<PrimShape>,
     pub start: FixedVec2,
@@ -805,6 +806,7 @@ impl AStarModel {
         let mut render_model = PcbRenderModel {
             width: self.width,
             height: self.height,
+            center: self.center,
             trace_shape_renderables: Vec::new(),
             pad_shape_renderables: Vec::new(),
         };

@@ -352,6 +352,7 @@ impl ProbaModel {
                 let mut astar_model = AStarModel {
                     width: problem.width,
                     height: problem.height,
+                    center: problem.center,
                     obstacle_shapes,
                     obstacle_clearance_shapes,
                     start: FixedVec2 {
@@ -630,6 +631,7 @@ impl ProbaModel {
         PcbRenderModel {
             width: problem.width,
             height: problem.height,
+            center: problem.center,
             trace_shape_renderables,
             pad_shape_renderables,
         }

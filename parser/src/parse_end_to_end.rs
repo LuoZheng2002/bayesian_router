@@ -83,8 +83,8 @@ pub fn parse_end_to_end(dsn_file_content: String)->Result<PcbProblem, String>{
                     aperture_width,
                     vertices.len()
                 );
-                for (i, (x, y)) in vertices.iter().enumerate() {
-                    println!("    Vertex {}: ({}, {})", i + 1, x, y);
+                for (i, vertex) in vertices.iter().enumerate() {
+                    println!("    Vertex {}: {:?}", i + 1, vertex);
                 }
             }
         }

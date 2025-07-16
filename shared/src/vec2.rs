@@ -50,7 +50,7 @@ impl Add for FixedVec2 {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct FloatVec2 {
     pub x: f32,
     pub y: f32,

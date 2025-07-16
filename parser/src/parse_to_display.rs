@@ -95,6 +95,10 @@ fn transform_point(point: FloatVec2, rotation_deg: f32, translation: FloatVec2) 
     FloatVec2::new(rotated.x + translation.x, rotated.y + translation.y)
 }
 
+fn vertices_to_round_rect(vertices: &Vec<FloatVec2>)->PadShape{
+    todo!("Convert vertices to round rectangle shape");
+}
+
 fn convert_shape(shape: &Shape) -> Result<PadShape, String> {
     match shape {
         Shape::Circle { diameter } => Ok(PadShape::Circle {
@@ -118,9 +122,9 @@ fn convert_shape(shape: &Shape) -> Result<PadShape, String> {
             }
             // For simplicity, we treat the polygon as a round rectangle
             Ok(PadShape::RoundRect {
-                width: *aperture_width as f32,
-                height: *aperture_width as f32, // Assuming square for simplicity
-                corner_radius: 0.0,             // Not specified in the original code
+                width: 10000.0,
+                height: 10000.0, // Assuming square for simplicity
+                corner_radius: 2000.0,             // Not specified in the original code
             })
         }
     }

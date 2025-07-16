@@ -418,14 +418,14 @@ fn parse_shape(s_expr: &Vec<SExpr>) -> Result<Shape, String> {
                 let x = shape_type[i]
                     .as_atom()
                     .ok_or("Vertex x must be a number")?
-                    .parse::<f64>()
+                    .parse::<f32>()
                     .map_err(|e| format!("Invalid vertex x: {}", e))?;
                 let y = shape_type[i + 1]
                     .as_atom()
                     .ok_or("Vertex y must be a number")?
-                    .parse::<f64>()
+                    .parse::<f32>()
                     .map_err(|e| format!("Invalid vertex y: {}", e))?;
-                vertices.push((x, y));
+                vertices.push(FloatVec2 { x, y });
             }
 
             Ok(Shape::Polygon {

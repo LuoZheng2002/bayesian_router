@@ -61,6 +61,8 @@ impl State {
         let pcb_render_model = pcb_render_model.lock().unwrap();
         let pcb_width = pcb_render_model.width;
         let pcb_height = pcb_render_model.height;
+        let pcb_center_x = pcb_render_model.center.x;
+        let pcb_center_y = pcb_render_model.center.y;
         // update camera
         let pcb_aspect_ratio = pcb_width / pcb_height;
         let screen_aspect_ratio = {
@@ -84,10 +86,10 @@ impl State {
         // self.camera.right = orthographic_width / 2.0 + self.pcb_width / 2.0;
         // self.camera.bottom = -orthographic_height / 2.0 + self.pcb_height / 2.0;
         // self.camera.top = orthographic_height / 2.0 + self.pcb_height / 2.0;
-        self.camera.left = -orthographic_width / 2.0;
-        self.camera.right = orthographic_width / 2.0;
-        self.camera.bottom = -orthographic_height / 2.0;
-        self.camera.top = orthographic_height / 2.0;
+        self.camera.left = -orthographic_width / 2.0 + pcb_center_x;
+        self.camera.right = orthographic_width / 2.0 + pcb_center_x;
+        self.camera.bottom = -orthographic_height / 2.0 + pcb_center_y;
+        self.camera.top = orthographic_height / 2.0 + pcb_center_y;
         // render submissions
         let circle_mesh = render_context.circle_mesh.clone();
         let rect_mesh = render_context.square_mesh.clone();
@@ -106,8 +108,10 @@ pub fn pcb_render_model_to_transparent_shape_submissions(
     let mut submissions = Vec::new();
 
     // Add PCB rectangle
+    let pcb_center_x = pcb_render_model.center.x;
+    let pcb_center_y = pcb_render_model.center.y;
     let pcb_rect_instance = ShapeInstance {
-        position: [0.0, 0.0, 0.0].into(),
+        position: [pcb_center_x, pcb_center_y, 0.0].into(),
         rotation: Quaternion::from(Euler::new(
             cgmath::Deg(0.0),
             cgmath::Deg(0.0),

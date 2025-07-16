@@ -91,8 +91,8 @@ fn main() {
                     aperture_width,
                     vertices.len()
                 );
-                for (i, (x, y)) in vertices.iter().enumerate() {
-                    println!("    Vertex {}: ({}, {})", i + 1, x, y);
+                for (i, vertex) in vertices.iter().enumerate() {
+                    println!("    Vertex {}: {:?}", i + 1, vertex);
                 }
             }
         }

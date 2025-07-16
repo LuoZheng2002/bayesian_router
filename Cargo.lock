@@ -138,6 +138,7 @@ dependencies = [
  "lazy_static",
  "log",
  "ordered-float 5.0.0",
+ "parser",
  "rand",
  "router",
  "shared",

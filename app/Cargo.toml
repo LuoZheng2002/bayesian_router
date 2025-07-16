@@ -17,3 +17,4 @@ wgpu = "25.0.2"
 winit = "0.30.11"
 router= {path="../router"}
 shared= {path="../shared"}
+parser={path="../parser"}

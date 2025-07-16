@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use crate::prim_shape::PrimShape;
+use crate::{prim_shape::PrimShape, vec2::FloatVec2};
 
 #[derive(Debug, Clone)]
 pub struct ShapeRenderable{
@@ -15,6 +15,7 @@ pub struct RenderableBatch(pub Vec<ShapeRenderable>);
 pub struct PcbRenderModel {
     pub width: f32,
     pub height: f32,
+    pub center: FloatVec2,
     pub trace_shape_renderables: Vec<RenderableBatch>,
     pub pad_shape_renderables: Vec<ShapeRenderable>,
 }
