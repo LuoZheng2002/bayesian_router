@@ -52,7 +52,6 @@ impl Pad {
         };
         let dy_abs = (height / 2.0 - corner_radius).abs();
         let dx_abs = (width / 2.0 - corner_radius).abs();
-        println!("dy_abs: {}, dx_abs: {}", dy_abs, dx_abs);
         let translation_matrix1 = cgmath::Matrix3::from_translation(Vector2{ x: dx_abs, y: dy_abs });
         let translation_matrix2 = cgmath::Matrix3::from_translation(Vector2{ x: -dx_abs, y: dy_abs });
         let translation_matrix3 = cgmath::Matrix3::from_translation(Vector2{ x: dx_abs, y: -dy_abs });
@@ -80,12 +79,10 @@ impl Pad {
         let translation2 = extract_translation(compound_matrix2);
         let translation3 = extract_translation(compound_matrix3);
         let translation4 = extract_translation(compound_matrix4);
-        println!("translation1: {:?}, translation2: {:?}, translation3: {:?}, translation4: {:?}", translation1, translation2, translation3, translation4);
-        println!("compound_matrix1: {:?}, compound_matrix2: {:?}, compound_matrix3: {:?}, compound_matrix4: {:?}", compound_matrix1, compound_matrix2, compound_matrix3, compound_matrix4);
-        let new_position1 = position + extract_translation(compound_matrix1);
-        let new_position2 = position + extract_translation(compound_matrix2);
-        let new_position3 = position + extract_translation(compound_matrix3);
-        let new_position4 = position + extract_translation(compound_matrix4);
+        let new_position1 = position + translation1;
+        let new_position2 = position + translation2;
+        let new_position3 = position + translation3;
+        let new_position4 = position + translation4;
         let circle_shape1 = CircleShape {
             position: new_position1,
             diameter: corner_radius * 2.0,

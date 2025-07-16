@@ -74,11 +74,18 @@ impl BacktrackNode {
             .pop()
             .expect("No remaining trace candidates to fix");
         let top_ranked_trace_path = &top_ranked_candidate.value.trace_path;
+        let top_ranked_trace_net = &top_ranked_candidate.value.net_name;
         // check if the trace collides with any fixed trace
-        for fixed_trace in self.fixed_traces.values() {
+        let filtered_fixed_traces: Vec<_> = self.fixed_traces.values()
+            .filter(|fixed_trace|{
+                fixed_trace.net_name != *top_ranked_trace_net
+            })
+            .collect();
+        for fixed_trace in filtered_fixed_traces {
             if top_ranked_trace_path.collides_with(&fixed_trace.trace_path) {
                 // If it collides, we cannot fix this trace
-                println!("Top ranked trace collides with a fixed trace, cannot fix it");
+                println!("In try fix top ranked trace:");
+                println!("Top ranked trace {} collides with a fixed trace {}, cannot fix it", top_ranked_candidate.value.net_name.0, fixed_trace.net_name.0);
                 return None; // Return None to indicate failure
             }
         }
@@ -135,12 +142,20 @@ impl BacktrackNode {
                 .pop()
                 .expect("No remaining trace candidates to fix");
             let top_ranked_trace_path = &top_ranked_candidate.value.trace_path;
+            let top_ranked_trace_net = &top_ranked_candidate.value.net_name;
+            
+            let filtered_fixed_traces: Vec<_> = self.fixed_traces.values()
+            .filter(|fixed_trace|{
+                fixed_trace.net_name != *top_ranked_trace_net
+            })
+            .collect();
             // Check if the trace collides with any fixed trace
             let mut collision_found = false;
-            for fixed_trace in self.fixed_traces.values() {
+            for fixed_trace in filtered_fixed_traces {
                 if top_ranked_trace_path.collides_with(&fixed_trace.trace_path) {
                     // If it collides, we cannot fix this trace
-                    println!("Top ranked trace collides with a fixed trace, cannot fix it");
+                    println!("In try fix any trace:");
+                    println!("Top ranked trace {} collides with a fixed trace {}, cannot fix it", top_ranked_candidate.value.net_name.0, fixed_trace.net_name.0);
                     collision_found = true;
                     break; // No need to check further, we found a collision
                 }

@@ -6,8 +6,8 @@ use crate::vec2::FixedPoint;
 
 pub const HALF_PROBABILITY_RAW_SCORE: f64 = 10.0;
 
-pub const MAX_TRACES_PER_ITERATION: usize = 4; // Maximum number of traces per iteration
-pub const MAX_GENERATION_ATTEMPTS: usize = 10; // Maximum number of attempts to generate a trace
+// pub const MAX_TRACES_PER_ITERATION: usize = 4; // Maximum number of traces per iteration
+pub const MAX_GENERATION_ATTEMPTS: usize = 4; // Maximum number of attempts to generate a trace
 
 pub const FIRST_ITERATION_SUM_PROBABILITY: f64 = 0.5; // Probability for the first iteration
 pub const SECOND_ITERATION_SUM_PROBABILITY: f64 = 0.25; //
@@ -20,11 +20,13 @@ pub const THIRD_ITERATION_NUM_TRACES: usize = 4;
 pub const FOURTH_ITERATION_NUM_TRACES: usize = 2;
 
 pub const BLOCK_THREAD: bool = false; // Whether to block the thread when waiting for a trace to be generated
-pub const DISPLAY_ASTAR: bool = true; // Whether to display the A* search process
+pub const DISPLAY_ASTAR: bool = false; // Whether to display the A* search process
 pub const DISPLAY_PERIOD_MILLIS: u64 = 10;
 
 pub const MAX_ITERATION: NonZeroUsize =
     NonZeroUsize::new(4).expect("MAX_ITERATION must be non-zero");
+
+pub const MAX_TRIALS: usize = 1000; // Maximum number of trials to find a trace
 
 pub const LINEAR_LEARNING_RATE: f64 = 0.2;
 pub const CONSTANT_LEARNING_RATE: f64 = 0.01;

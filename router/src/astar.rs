@@ -45,7 +45,7 @@ impl AStarModel {
             position: FloatVec2 {
                 x: 0.0,
                 y: self.height / 2.0 + margin / 2.0,
-            },
+            } + self.center,
             width: self.width + 2.0 * margin,
             height: margin,
             rotation: cgmath::Deg(0.0),
@@ -54,7 +54,7 @@ impl AStarModel {
             position: FloatVec2 {
                 x: 0.0,
                 y: -self.height / 2.0 - margin / 2.0,
-            },
+            } + self.center,
             width: self.width + 2.0 * margin,
             height: margin,
             rotation: cgmath::Deg(0.0),
@@ -63,7 +63,7 @@ impl AStarModel {
             position: FloatVec2 {
                 x: -self.width / 2.0 - margin / 2.0,
                 y: 0.0,
-            },
+            } + self.center,
             width: margin,
             height: self.height + 2.0 * margin,
             rotation: cgmath::Deg(0.0),
@@ -72,7 +72,7 @@ impl AStarModel {
             position: FloatVec2 {
                 x: self.width / 2.0 + margin / 2.0,
                 y: 0.0,
-            },
+            } + self.center,
             width: margin,
             height: self.height + 2.0 * margin,
             rotation: cgmath::Deg(0.0),
@@ -859,8 +859,6 @@ impl AStarModel {
         if DISPLAY_ASTAR {
             self.display_and_block(pcb_render_model.clone(), &frontier); // display the initial state of the frontier
         }
-
-        let max_trials: usize = 200;
         let mut trial_count = 0;
         while !frontier.is_empty() {
             let item = frontier.pop().unwrap();
@@ -896,7 +894,7 @@ impl AStarModel {
             }
             // don't consider visited nodes as trials
             trial_count += 1;
-            if trial_count > max_trials {
+            if trial_count > MAX_TRIALS {
                 return Err("A* search exceeded maximum trials".to_string());
             }
             visited.insert(current_key.clone());
