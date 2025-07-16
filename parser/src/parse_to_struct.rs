@@ -1,6 +1,8 @@
 //use core::net;
 use std::collections::HashMap;
 
+use shared::vec2::FloatVec2;
+
 use crate::{
     dsn_struct::{
         Boundary, Component, ComponentInst, DsnStruct, Image, Layer, Library, Net, Netclass,
@@ -214,7 +216,7 @@ fn parse_placement(s_expr: &Vec<SExpr>) -> Result<Placement, String> {
                 .ok_or("Expected x position in place list")?
                 .as_atom()
                 .ok_or("Expected x position to be an atom")?
-                .parse::<f64>()
+                .parse::<f32>()
                 .map_err(|e| format!("Failed to parse x position: {}", e))?;
 
             let y_pos = place_list
@@ -222,7 +224,7 @@ fn parse_placement(s_expr: &Vec<SExpr>) -> Result<Placement, String> {
                 .ok_or("Expected y position in place list")?
                 .as_atom()
                 .ok_or("Expected y position to be an atom")?
-                .parse::<f64>()
+                .parse::<f32>()
                 .map_err(|e| format!("Failed to parse y position: {}", e))?;
 
             let rotation = place_list
@@ -230,13 +232,16 @@ fn parse_placement(s_expr: &Vec<SExpr>) -> Result<Placement, String> {
                 .ok_or("Expected rotation in place list")?
                 .as_atom()
                 .ok_or("Expected rotation to be an atom")?
-                .parse::<f64>()
+                .parse::<f32>()
                 .map_err(|e| format!("Failed to parse rotation: {}", e))?;
 
             // Create the component instance
             let instance = ComponentInst {
                 reference,
-                position: (x_pos, y_pos),
+                position: FloatVec2 {
+                    x: x_pos,
+                    y: y_pos,
+                },
                 rotation,
             };
             instances.push(instance);
@@ -304,13 +309,13 @@ fn parse_image(s_expr: &Vec<SExpr>) -> Result<Image, String> {
                 let x = expr_list[3]
                     .as_atom()
                     .ok_or("X coordinate must be a number")?
-                    .parse::<f64>()
+                    .parse::<f32>()
                     .map_err(|e| format!("Invalid x coordinate: {}", e))?;
 
                 let y = expr_list[4]
                     .as_atom()
                     .ok_or("Y coordinate must be a number")?
-                    .parse::<f64>()
+                    .parse::<f32>()
                     .map_err(|e| format!("Invalid y coordinate: {}", e))?;
 
                 pins.insert(
@@ -318,7 +323,10 @@ fn parse_image(s_expr: &Vec<SExpr>) -> Result<Image, String> {
                     Pin {
                         pad_stack_name,
                         pin_number,
-                        position: (x, y),
+                        position: FloatVec2 {
+                            x,
+                            y,
+                        },
                     },
                 );
             }

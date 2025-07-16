@@ -57,6 +57,10 @@ pub struct FloatVec2 {
 }
 
 impl FloatVec2 {
+
+    pub fn new(x: f32, y: f32) -> Self {
+        FloatVec2 { x, y }
+    }
     pub fn to_fixed(&self) -> FixedVec2 {
         FixedVec2 {
             x: FixedPoint::from_num(self.x),

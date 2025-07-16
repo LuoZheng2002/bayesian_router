@@ -1,12 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{pad::{Pad, PadName}, pcb_problem::{NetClassName, NetName}, shapes::{Line, Polygon}};
-
-
-
-
-
-
+use shared::{pad::{Pad, PadName}, pcb_problem::{NetClassName, NetName}, prim_shape::{LineForCollision, PolygonForCollision}, vec2::FloatVec2};
 
 pub struct DisplayNetInfo{
     pub net_name: NetName,
@@ -22,9 +16,9 @@ pub struct DisplayNetInfo{
 pub struct DisplayFormat{
     pub width: f32, // in specctra dsn units
     pub height: f32, // in specctra dsn units
-    pub center: (f32, f32), // Center of the PCB, in specctra dsn units
-    pub obstacle_lines: Vec<Line>, // Lines that represent obstacles in the PCB
-    pub obstacle_polygons: Vec<Polygon>, // Polygons that represent obstacles in the PCB
+    pub center: FloatVec2, // Center of the PCB, in specctra dsn units
+    pub obstacle_lines: Vec<LineForCollision>, // Lines that represent obstacles in the PCB
+    pub obstacle_polygons: Vec<PolygonForCollision>, // Polygons that represent obstacles in the PCB
     pub nets: HashMap<NetName, DisplayNetInfo>, // NetID to DisplayNetInfo
 }
 

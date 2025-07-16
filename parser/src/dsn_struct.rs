@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use shared::vec2::FloatVec2;
+
 
 
 pub struct Resolution{
@@ -21,8 +23,8 @@ pub struct Structure{
 
 pub struct ComponentInst{
     pub reference: String,
-    pub position: (f64, f64),
-    pub rotation: f64,
+    pub position: FloatVec2,
+    pub rotation: f32,
 }
 pub struct Component{
     pub name: String,
@@ -36,7 +38,7 @@ pub struct Placement{
 pub struct Pin{
     pub pad_stack_name: String,
     pub pin_number: usize,
-    pub position: (f64, f64),
+    pub position: FloatVec2,
 }
 
 pub struct Image{

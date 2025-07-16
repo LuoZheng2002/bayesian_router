@@ -1,15 +1,17 @@
 use crate::dsn_struct::{
     Boundary, Component, ComponentInst, DsnStruct, Network, PadStack, Pin, Pin2, Placement, Shape,
 };
-use crate::pad::{self, Pad, PadName, PadShape};
 use crate::parse_to_display_format::{DisplayFormat, DisplayNetInfo, ExtraInfo};
-use crate::pcb_problem::{NetClassName, NetName};
-use crate::shapes::{Line, Polygon};
+
 use cgmath::{Deg, Matrix2, Rad, Vector2};
+use shared::pad::{Pad, PadName, PadShape};
+use shared::pcb_problem::{NetClassName, NetName};
+use shared::prim_shape::{LineForCollision, PolygonForCollision};
+use shared::vec2::{FixedVec2, FloatVec2};
 use core::net;
 use std::collections::HashMap;
 
-fn calculate_boundary(boundary: &Boundary) -> Result<(f32, f32, (f32, f32)), String> {
+fn calculate_boundary(boundary: &Boundary) -> Result<(f32, f32, FloatVec2), String> {
     let mut min_x = f64::MAX;
     let mut max_x = f64::MIN;
     let mut min_y = f64::MAX;
@@ -24,7 +26,10 @@ fn calculate_boundary(boundary: &Boundary) -> Result<(f32, f32, (f32, f32)), Str
 
     let width = (max_x - min_x) as f32;
     let height = (max_y - min_y) as f32;
-    let center = ((min_x + max_x) as f32 / 2.0, (min_y + max_y) as f32 / 2.0);
+    let center = FloatVec2 {
+        x: (min_x + max_x) as f32 / 2.0,
+        y: (min_y + max_y) as f32 / 2.0,
+    };
 
     Ok((width, height, center))
 }
@@ -77,17 +82,17 @@ fn buildpadmap(
 pub struct TransformedPad {
     pub component_name: String, // 如 "J1"
     pub pin_number: usize,
-    pub position: (f64, f64), // 最终PCB坐标系下的位置
+    pub position: FloatVec2, // 最终PCB坐标系下的位置
     pub shape: PadShape,
     pub rotation: cgmath::Deg<f32>, // 最终旋转角度（度）
 }
 
-fn transform_point(point: (f64, f64), rotation_deg: f64, translation: (f64, f64)) -> (f64, f64) {
+fn transform_point(point: FloatVec2, rotation_deg: f32, translation: FloatVec2) -> FloatVec2 {
     let rotation = Rad::from(Deg(rotation_deg));
     let mat = Matrix2::from_angle(rotation);
-    let vec = Vector2::new(point.0, point.1);
+    let vec = Vector2::new(point.x, point.y);
     let rotated = mat * vec;
-    (rotated.x + translation.0, rotated.y + translation.1)
+    FloatVec2::new(rotated.x + translation.x, rotated.y + translation.y)
 }
 
 fn convert_shape(shape: &Shape) -> Result<PadShape, String> {
@@ -143,11 +148,11 @@ fn build_pad_map(dsn: &DsnStruct) -> Result<HashMap<String, TransformedPad>, Str
                 let mut position = pin.position;
 
                 // 2. 应用footprint旋转
-                position = transform_point(position, instance.rotation, (0.0, 0.0));
+                position = transform_point(position, instance.rotation, FloatVec2 { x: 0.0, y: 0.0 });
 
                 // 3. 应用footprint位移
-                position.0 += instance.position.0;
-                position.1 += instance.position.1;
+                position.x += instance.position.x;
+                position.y += instance.position.y;
 
                 // 转换形状
                 let shape = convert_shape(&pad_stack.shape)?;
@@ -278,8 +283,8 @@ fn parse_net_info(dsn: &DsnStruct) -> Result<HashMap<NetName, DisplayNetInfo>, S
 
 pub fn dsn_to_display(dsn: DsnStruct) -> Result<(DisplayFormat, ExtraInfo), String> {
     let (width, height, center) = calculate_boundary(&dsn.structure.boundary)?;
-    let obstacle_lines: Vec<Line> = Vec::new();
-    let obstacle_polygons: Vec<Polygon> = Vec::new();
+    let obstacle_lines: Vec<LineForCollision> = Vec::new();
+    let obstacle_polygons: Vec<PolygonForCollision> = Vec::new();
     let net_info: HashMap<NetName, DisplayNetInfo> = parse_net_info(&dsn)?;
 
     let display_format = DisplayFormat {

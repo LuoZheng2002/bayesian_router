@@ -1,11 +1,7 @@
+use shared::{pad::{Pad, PadName}, pcb_problem::{NetName, PcbProblem}};
+
 // convert_to_problem.rs
-use crate::pad::Pad;
 use crate::parse_to_display_format::{DisplayFormat, ExtraInfo};
-use crate::{
-    pad::PadName,
-    pcb_problem::{Connection, ConnectionID, NetInfo, NetName, PcbProblem},
-    shapes::{Line, Polygon},
-};
 use std::collections::HashMap;
 
 pub struct Converter;

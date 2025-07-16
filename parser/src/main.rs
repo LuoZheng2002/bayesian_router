@@ -46,8 +46,8 @@ fn main() {
         println!("Component: {}", component.name);
         for instance in &component.instances {
             println!(
-                "  Instance: {} ({}, {}) rotation {}",
-                instance.reference, instance.position.0, instance.position.1, instance.rotation
+                "  Instance: {}, {:?} rotation {}",
+                instance.reference, instance.position, instance.rotation
             );
         }
     }
@@ -57,8 +57,8 @@ fn main() {
         println!("  Pins:");
         for (pin_num, pin) in &image.pins {
             println!(
-                "    Pin {}: pad_stack={}, position=({}, {})",
-                pin_num, pin.pad_stack_name, pin.position.0, pin.position.1
+                "    Pin {}: pad_stack={}, position={:?}",
+                pin_num, pin.pad_stack_name, pin.position
             );
         }
     }
