@@ -14,7 +14,7 @@ use crate::post_process::optimize_path;
 
 use shared::{
     binary_heap_item::BinaryHeapItem,
-    hyperparameters::{ASTAR_STRIDE, DISPLAY_ASTAR, ESTIMATE_COEFFICIENT},
+    hyperparameters::{ASTAR_STRIDE, DISPLAY_ASTAR, ESTIMATE_COEFFICIENT, MAX_TRIALS},
     pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel},
     prim_shape::{CircleShape, PrimShape, RectangleShape},
     trace_path::{Direction, TraceAnchors, TracePath, TraceSegment},
