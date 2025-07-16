@@ -1,8 +1,8 @@
 use std::{collections::HashMap, sync::{Arc, Mutex}};
 
-use shared::{pcb_problem::{PcbProblem, PcbSolution}, pcb_render_model::PcbRenderModel};
+use shared::{color_float3::ColorFloat3, pcb_problem::{NetName, PcbProblem, PcbSolution}, pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel}};
 
-use crate::backtrack_node::BacktrackNode;
+use crate::{backtrack_node::BacktrackNode, block_or_sleep};
 
 
 
@@ -32,15 +32,67 @@ pub fn solve_pcb_problem(
                 node.fixed_traces.len(),
                 node.remaining_trace_candidates.len()
             );
+            for fixed_trace in node.fixed_traces.values() {
+                println!("\t\tFixed trace: net_name: {}, connection_id: {}",
+                         fixed_trace.net_name.0, fixed_trace.connection_id.0);
+            }
         }
+    }
+
+    fn node_to_pcb_render_model(problem: &PcbProblem, node: &BacktrackNode)-> PcbRenderModel{
+        let mut trace_shape_renderables: Vec<RenderableBatch> = Vec::new();
+        let mut pad_shape_renderables: Vec<ShapeRenderable> = Vec::new();
+        let mut net_name_to_color: HashMap<NetName, ColorFloat3> = HashMap::new();
+        for (_, net_info) in problem.nets.iter() {
+            net_name_to_color.insert(net_info.net_name.clone(), net_info.color);
+            // add source pad
+            let source_renderables = net_info
+                .source
+                .to_renderables(net_info.color.to_float4(1.0));
+            let source_clearance_renderables = net_info
+                .source
+                .to_clearance_renderables(net_info.color.to_float4(0.5));
+            pad_shape_renderables.extend(source_renderables);
+            pad_shape_renderables.extend(source_clearance_renderables);
+            for (_, connection) in net_info.connections.iter() {                
+                let sink_renderables = connection
+                    .sink
+                    .to_renderables(net_info.color.to_float4(1.0));
+                let sink_clearance_renderables = connection
+                    .sink
+                    .to_clearance_renderables(net_info.color.to_float4(0.5));                
+                pad_shape_renderables.extend(sink_renderables);
+                pad_shape_renderables.extend(sink_clearance_renderables);
+            }
+        }
+        for fixed_trace in node.fixed_traces.values() {
+            let renderable_batches = fixed_trace
+                .trace_path
+                .to_renderables(net_name_to_color[&fixed_trace.net_name].to_float4(1.0));
+            trace_shape_renderables.extend(renderable_batches);
+        }
+        PcbRenderModel {
+            width: problem.width,
+            height: problem.height,
+            center: problem.center,
+            trace_shape_renderables,
+            pad_shape_renderables,
+        }
+    }
+
+    fn display_and_block(node: &BacktrackNode, pcb_problem: &PcbProblem, pcb_render_model: Arc<Mutex<PcbRenderModel>>) {
+        let render_model = node_to_pcb_render_model(pcb_problem, node);
+        pcb_render_model.update_pcb_render_model(render_model);
+        block_or_sleep::block_thread();
     }
 
     let first_node = BacktrackNode::from_fixed_traces(pcb_problem, &HashMap::new(), pcb_render_model.clone());
     // assume the first node has trace candidates
     node_stack.push(first_node);
 
-    while node_stack.len() > 0 {
+    while node_stack.len() > 0 {        
         print_current_stack(&node_stack);
+        display_and_block(node_stack.last().unwrap(), pcb_problem, pcb_render_model.clone());
         let top_node = node_stack.last_mut().unwrap();
         if top_node.is_solution(pcb_problem) {
             println!("Found a solution!");

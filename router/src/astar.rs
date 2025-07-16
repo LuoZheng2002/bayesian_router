@@ -14,7 +14,7 @@ use crate::{
 };
 
 use shared::{
-    binary_heap_item::BinaryHeapItem, hyperparameters::{ASTAR_STRIDE, DISPLAY_ASTAR, ESTIMATE_COEFFICIENT}, pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel}, prim_shape::{CircleShape, PrimShape, RectangleShape}, trace_path::{Direction, TraceAnchors, TracePath, TraceSegment}, vec2::{FixedPoint, FixedVec2, FloatVec2}
+    binary_heap_item::BinaryHeapItem, hyperparameters::{ASTAR_STRIDE, DISPLAY_ASTAR, ESTIMATE_COEFFICIENT, MAX_TRIALS}, pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel}, prim_shape::{CircleShape, PrimShape, RectangleShape}, trace_path::{Direction, TraceAnchors, TracePath, TraceSegment}, vec2::{FixedPoint, FixedVec2, FloatVec2}
 };
 
 pub struct AStarModel {
@@ -945,8 +945,6 @@ impl AStarModel {
         if DISPLAY_ASTAR {
             self.display_and_block(pcb_render_model.clone(), &frontier); // display the initial state of the frontier
         }
-
-        let max_trials: usize = 200;
         let mut trial_count = 0;
         while !frontier.is_empty() {
             
@@ -973,7 +971,7 @@ impl AStarModel {
             }
             // don't consider visited nodes as trials
             trial_count += 1;
-            if trial_count > max_trials {
+            if trial_count > MAX_TRIALS {
                 return Err("A* search exceeded maximum trials".to_string());
             }
             visited.insert(current_key.clone());
