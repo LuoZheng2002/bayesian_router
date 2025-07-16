@@ -1,0 +1,18 @@
+[package]
+name = "router"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bytemuck = "1.23.1"
+cgmath = "0.18.0"
+env_logger = "0.11.8"
+fixed = "1.29.0"
+futures = "0.3.31"
+lazy_static = "1.5.0"
+log = "0.4.27"
+ordered-float = "5.0.0"
+rand = "0.9.1"
+wgpu = "25.0.2"
+winit = "0.30.11"
+shared={path="../shared"}

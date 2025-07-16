@@ -1,0 +1,143 @@
+(session specctra_test
+  (base_design specctra_test)
+  (placement
+    (resolution um 10)
+    (component "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
+      (place U1 635000 -838200 front 0)
+    )
+    (component Connector_PinSocket_2.54mm:PinSocket_1x01_P2.54mm_Vertical
+      (place J1 762000 -787400 front 0)
+    )
+    (component Capacitor_THT:CP_Radial_D13.0mm_P5.00mm
+      (place C1 533400 -609600 front 180)
+    )
+    (component LED_THT:LED_D5.0mm
+      (place D1 635000 -711200 front 0)
+    )
+    (component "Package_TO_SOT_SMD:SOT-23"
+      (place Q1 584200 -736600 front 0)
+    )
+  )
+  (was_is
+  )
+  (routes 
+    (resolution um 10)
+    (parser
+      (host_cad "KiCad's Pcbnew")
+      (host_version 9.0.2)
+    )
+    (library_out 
+      (padstack "Via[0-1]_600:300_um"
+        (shape
+          (circle F.Cu 6000 0 0)
+        )
+        (shape
+          (circle B.Cu 6000 0 0)
+        )
+        (attach off)
+      )
+      (padstack "Via[0-1]_600:300_um"
+        (shape
+          (circle F.Cu 6000 0 0)
+        )
+        (shape
+          (circle B.Cu 6000 0 0)
+        )
+        (attach off)
+      )
+    )
+    (network_out 
+      (net "Net-(U1-R)"
+        (wire
+          (path F.Cu 2000
+            483400 -609600
+            483400 -739664
+            600986 -857250
+            610250 -857250
+          )
+        )
+      )
+      (net "Net-(U1-DIS)"
+        (wire
+          (path F.Cu 2000
+            659750 -831850
+            656230 -831850
+            646324 -821944
+            646324 -812460
+            647700 -811084
+            647700 -701394
+            555906 -609600
+            533400 -609600
+          )
+        )
+      )
+      (net "Net-(D1-A)"
+        (wire
+          (path F.Cu 2000
+            659750 -819150
+            660400 -818500
+            660400 -711200
+          )
+        )
+      )
+      (net "Net-(D1-K)"
+        (wire
+          (path F.Cu 2000
+            610250 -844550
+            614237 -844550
+            635000 -823787
+            635000 -711200
+          )
+        )
+      )
+      (net "Net-(J1-Pin_1)"
+        (wire
+          (path F.Cu 2000
+            762000 -787400
+            750483 -787400
+          )
+        )
+        (wire
+          (path F.Cu 2000
+            659750 -844550
+            693333 -844550
+            750483 -787400
+          )
+        )
+      )
+      (net "Net-(Q1-D)"
+        (wire
+          (path F.Cu 2000
+            574825 -746100
+            591183 -762458
+            591183 -841767
+            600643 -851227
+            653727 -851227
+            659750 -857250
+          )
+        )
+      )
+      (net "Net-(Q1-G)"
+        (wire
+          (path F.Cu 2000
+            593575 -736600
+            623348 -766373
+            623348 -822409
+            613907 -831850
+            610250 -831850
+          )
+        )
+      )
+      (net "Net-(Q1-S)"
+        (wire
+          (path F.Cu 2000
+            610250 -819150
+            610250 -767150
+            574825 -731725
+            574825 -727100
+          )
+        )
+      )
+    )
+  )
+)

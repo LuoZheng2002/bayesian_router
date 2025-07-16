@@ -1,0 +1,10 @@
+[package]
+name = "shared"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cgmath = "0.18.0"
+fixed = "1.29.0"
+lazy_static = "1.5.0"
+ordered-float = "5.0.0"
