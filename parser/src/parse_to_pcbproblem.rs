@@ -16,6 +16,7 @@ impl Converter {
             display_format.width,
             display_format.height,
             display_format.center,
+            display_format.scale_down_factor,
         );
 
         // 添加障碍物

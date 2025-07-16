@@ -20,6 +20,7 @@ pub struct DisplayFormat{
     pub obstacle_lines: Vec<LineForCollision>, // Lines that represent obstacles in the PCB
     pub obstacle_polygons: Vec<PolygonForCollision>, // Polygons that represent obstacles in the PCB
     pub nets: HashMap<NetName, DisplayNetInfo>, // NetID to DisplayNetInfo
+    pub scale_down_factor: f32, // Scale down factor to convert specctra dsn units to float units
 }
 
 pub struct ExtraInfo{

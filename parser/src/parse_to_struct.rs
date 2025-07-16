@@ -57,8 +57,8 @@ fn parse_boundary(s_expr: &Vec<SExpr>) -> Result<Boundary, String> {
     if second_list.len() < 3 {
         return Err("Expected at least three items in the boundary list".to_string());
     }
-    let mut points: Vec<(f64, f64)> = Vec::new();
-    let mut prev_number: Option<f64> = None;
+    let mut points: Vec<FloatVec2> = Vec::new();
+    let mut prev_number: Option<f32> = None;
     for item in second_list.iter().skip(3) {
         match prev_number {
             Some(prev_num) => {
@@ -66,9 +66,9 @@ fn parse_boundary(s_expr: &Vec<SExpr>) -> Result<Boundary, String> {
                     .as_atom()
                     .ok_or("Expected an atom in the boundary list")?;
                 let number = number
-                    .parse::<f64>()
+                    .parse::<f32>()
                     .map_err(|e| format!("Failed to parse boundary number: {}", e))?;
-                points.push((prev_num, number));
+                points.push(FloatVec2 { x: prev_num, y: number });
                 prev_number = None;
             }
             None => {
@@ -76,7 +76,7 @@ fn parse_boundary(s_expr: &Vec<SExpr>) -> Result<Boundary, String> {
                     .as_atom()
                     .ok_or("Expected an atom in the boundary list")?;
                 let number = number
-                    .parse::<f64>()
+                    .parse::<f32>()
                     .map_err(|e| format!("Failed to parse boundary number: {}", e))?;
                 prev_number = Some(number);
             }
@@ -361,7 +361,7 @@ fn parse_shape(s_expr: &Vec<SExpr>) -> Result<Shape, String> {
             let diameter = shape_type[2]
                 .as_atom()
                 .ok_or("Circle diameter must be a number")?
-                .parse::<f64>()
+                .parse::<f32>()
                 .map_err(|e| format!("Invalid circle diameter: {}", e))?;
 
             Ok(Shape::Circle { diameter })
@@ -374,22 +374,22 @@ fn parse_shape(s_expr: &Vec<SExpr>) -> Result<Shape, String> {
             let x_min = shape_type[2]
                 .as_atom()
                 .ok_or("Rect x_min must be a number")?
-                .parse::<f64>()
+                .parse::<f32>()
                 .map_err(|e| format!("Invalid x_min: {}", e))?;
             let y_min = shape_type[3]
                 .as_atom()
                 .ok_or("Rect y_min must be a number")?
-                .parse::<f64>()
+                .parse::<f32>()
                 .map_err(|e| format!("Invalid y_min: {}", e))?;
             let x_max = shape_type[4]
                 .as_atom()
                 .ok_or("Rect x_max must be a number")?
-                .parse::<f64>()
+                .parse::<f32>()
                 .map_err(|e| format!("Invalid x_max: {}", e))?;
             let y_max = shape_type[5]
                 .as_atom()
                 .ok_or("Rect y_max must be a number")?
-                .parse::<f64>()
+                .parse::<f32>()
                 .map_err(|e| format!("Invalid y_max: {}", e))?;
 
             Ok(Shape::Rect {
@@ -407,7 +407,7 @@ fn parse_shape(s_expr: &Vec<SExpr>) -> Result<Shape, String> {
             let aperture_width = shape_type[2]
                 .as_atom()
                 .ok_or("Aperture width must be a number")?
-                .parse::<f64>()
+                .parse::<f32>()
                 .map_err(|e| format!("Invalid aperture width: {}", e))?;
 
             let mut vertices = Vec::new();
@@ -648,8 +648,8 @@ fn parse_netclass(s_expr: &Vec<SExpr>) -> Result<Netclass, String> {
     }
 
     let mut via_name = String::new();
-    let mut width = 0.0;
-    let mut clearance = 0.0;
+    let mut width: Option<f32> = None;
+    let mut clearance: Option<f32> = None;
     for item in s_expr.iter().skip(current_pos) {
         if let SExpr::List(list) = item {
             match list.first().and_then(|x| x.as_atom()).map(|s| s.as_str()) {
@@ -681,22 +681,24 @@ fn parse_netclass(s_expr: &Vec<SExpr>) -> Result<Netclass, String> {
                                 .map(|s| s.as_str())
                             {
                                 Some("width") => {
-                                    width = rule_list
+                                    let temp_width = rule_list
                                         .get(1)
                                         .ok_or("Missing width value")?
                                         .as_atom()
                                         .ok_or("Width must be a number")?
-                                        .parse::<f64>()
+                                        .parse::<f32>()
                                         .map_err(|e| format!("Invalid width: {}", e))?;
+                                    width = Some(temp_width);
                                 }
                                 Some("clearance") => {
-                                    clearance = rule_list
+                                    let temp_clearance = rule_list
                                         .get(1)
                                         .ok_or("Missing clearance value")?
                                         .as_atom()
                                         .ok_or("Clearance must be a number")?
-                                        .parse::<f64>()
+                                        .parse::<f32>()
                                         .map_err(|e| format!("Invalid clearance: {}", e))?;
+                                    clearance = Some(temp_clearance);
                                 }
                                 _ => {}
                             }
@@ -707,7 +709,8 @@ fn parse_netclass(s_expr: &Vec<SExpr>) -> Result<Netclass, String> {
             }
         }
     }
-
+    let width = width.ok_or("Missing required field: width")?;
+    let clearance = clearance.ok_or("Missing required field: clearance")?;
     Ok(Netclass {
         net_class_name,
         net_names,

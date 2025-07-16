@@ -410,18 +410,12 @@ impl ProbaModel {
                     }
                     // sample a trace for this connection
                     astar_model.start = {
-                        let mut start = net_info.source.position.to_fixed();
-                        if (start.x - start.y).to_bits() % 2 == 1 {
-                            start.x += FixedPoint::DELTA; // Ensure the start point is even
-                        }
-                        start
+                        let start = net_info.source.position.to_fixed();
+                        start.to_nearest_even_even()
                     };
                     astar_model.end = {
-                        let mut end = connection.sink.position.to_fixed();
-                        if (end.x - end.y).to_bits() % 2 == 1 {
-                            end.x += FixedPoint::DELTA; // Ensure the end point is even
-                        }
-                        end
+                        let end = connection.sink.position.to_fixed();
+                        end.to_nearest_even_even()
                     };
                     astar_model.trace_width = connection.sink_trace_width;
                     astar_model.trace_clearance = connection.sink_trace_clearance;

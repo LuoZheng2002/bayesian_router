@@ -7,7 +7,7 @@ use shared::{pad::{Pad, PadName, PadShape}, pcb_problem::{NetName, PcbProblem}, 
 
 
 pub fn pcb_problem1()->PcbProblem{
-    let mut pcb_problem = PcbProblem::new(15.0, 15.0, FloatVec2{x: 0.0, y: 0.0});
+    let mut pcb_problem = PcbProblem::new(15.0, 15.0, FloatVec2{x: 0.0, y: 0.0}, 1.0);
     let red_net_name = NetName("red".into());
     pcb_problem.add_net(red_net_name.clone(), 
         Pad{
@@ -188,7 +188,7 @@ pub fn pcb_problem1()->PcbProblem{
 }
 
 pub fn pcb_problem2()->PcbProblem{
-    let mut pcb_problem = PcbProblem::new(20.0, 20.0, FloatVec2{x: 0.0, y: 0.0});
+    let mut pcb_problem = PcbProblem::new(20.0, 20.0, FloatVec2{x: 0.0, y: 0.0}, 1.0);
     let red_net_name = NetName("red".into());
     let green_net_name = NetName("green".into());
     let blue_net_name = NetName("blue".into());

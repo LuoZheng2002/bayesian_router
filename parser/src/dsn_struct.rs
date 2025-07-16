@@ -14,7 +14,7 @@ pub struct Layer{
     pub name: String,
 }
 
-pub struct Boundary(pub Vec<(f64, f64)>);
+pub struct Boundary(pub Vec<FloatVec2>);
 
 pub struct Structure{
     pub layers: Vec<Layer>,
@@ -47,16 +47,16 @@ pub struct Image{
 }
 pub enum Shape{
     Circle{
-        diameter: f64,
+        diameter: f32,
     },
     Rect{
-        x_min: f64,
-        y_min: f64,
-        x_max: f64,
-        y_max: f64,
+        x_min: f32,
+        y_min: f32,
+        x_max: f32,
+        y_max: f32,
     },
     Polygon{
-        aperture_width: f64,
+        aperture_width: f32,
         vertices: Vec<FloatVec2>,
     }
 }
@@ -75,8 +75,8 @@ pub struct Netclass{
     pub net_class_name: String,
     pub net_names: Vec<String>,
     pub via_name: String,
-    pub width: f64,
-    pub clearance: f64,
+    pub width: f32,
+    pub clearance: f32,
 }
 
 pub struct Pin2{

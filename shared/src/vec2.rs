@@ -1,4 +1,4 @@
-use std::ops::{Add, Sub};
+use std::ops::{Add, Div, Sub};
 
 pub type FixedPoint = fixed::types::I24F8;
 
@@ -26,6 +26,28 @@ impl FixedVec2 {
     }
     pub fn is_sum_even(&self) -> bool {
         (self.x.to_bits() + self.y.to_bits()) % 2 == 0
+    }
+    pub fn to_nearest_even_even(&self)->FixedVec2{
+        let x_is_odd = self.x.to_bits() & 1 == 1;
+        let y_is_odd = self.y.to_bits() & 1 == 1;
+        if x_is_odd && y_is_odd {
+            FixedVec2 {
+                x: self.x - FixedPoint::DELTA,
+                y: self.y - FixedPoint::DELTA,
+            }
+        } else if x_is_odd {
+            FixedVec2 {
+                x: self.x - FixedPoint::DELTA,
+                y: self.y,
+            }
+        } else if y_is_odd {
+            FixedVec2 {
+                x: self.x,
+                y: self.y - FixedPoint::DELTA,
+            }
+        } else {
+            *self
+        }
     }
 }
 
@@ -117,6 +139,20 @@ impl Sub for FloatVec2 {
         FloatVec2 {
             x: self.x - other.x,
             y: self.y - other.y,
+        }
+    }
+}
+
+impl Div<f32> for FloatVec2 {
+    type Output = FloatVec2;
+
+    fn div(self, scalar: f32) -> FloatVec2 {
+        if scalar == 0.0 {
+            panic!("Division by zero in FloatVec2");
+        }
+        FloatVec2 {
+            x: self.x / scalar,
+            y: self.y / scalar,
         }
     }
 }

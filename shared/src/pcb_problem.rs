@@ -54,6 +54,7 @@ pub struct PcbProblem {
     pub nets: HashMap<NetName, NetInfo>, // NetID to NetInfo
     pub connection_id_generator: Box<dyn Iterator<Item = ConnectionID> + Send + 'static>, // A generator for ConnectionID, starting from 0
     pub distinct_color_generator: Box<dyn Iterator<Item = ColorFloat3> + Send + 'static>, // A generator for distinct colors
+    pub scale_down_factor: f32, // Scale down factor to convert specctra dsn units to float units
 }
 
 
@@ -69,12 +70,13 @@ pub struct PcbSolution {
 }
 
 impl PcbProblem {
-    pub fn new(width: f32, height: f32, center: FloatVec2) -> Self {
+    pub fn new(width: f32, height: f32, center: FloatVec2, scale_down_factor: f32) -> Self {
         PcbProblem {
             width,
             height,
             center,
             obstacle_lines: Vec::new(),
+            scale_down_factor,
             obstacle_polygons: Vec::new(),
             nets: HashMap::new(),
             connection_id_generator: Box::new((0..).map(ConnectionID)),

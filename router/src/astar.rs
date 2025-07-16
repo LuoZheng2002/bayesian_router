@@ -43,7 +43,7 @@ impl AStarModel {
             position: FloatVec2 {
                 x: 0.0,
                 y: self.height / 2.0 + margin / 2.0,
-            },
+            } + self.center,
             width: self.width + 2.0 * margin,
             height: margin,
             rotation: cgmath::Deg(0.0),
@@ -52,7 +52,7 @@ impl AStarModel {
             position: FloatVec2 {
                 x: 0.0,
                 y: -self.height / 2.0 - margin / 2.0,
-            },
+            } + self.center,
             width: self.width + 2.0 * margin,
             height: margin,
             rotation: cgmath::Deg(0.0),
@@ -61,7 +61,7 @@ impl AStarModel {
             position: FloatVec2 {
                 x: -self.width / 2.0 - margin / 2.0,
                 y: 0.0,
-            },
+            } + self.center,
             width: margin,
             height: self.height + 2.0 * margin,
             rotation: cgmath::Deg(0.0),
@@ -70,7 +70,7 @@ impl AStarModel {
             position: FloatVec2 {
                 x: self.width / 2.0 + margin / 2.0,
                 y: 0.0,
-            },
+            } + self.center,
             width: margin,
             height: self.height + 2.0 * margin,
             rotation: cgmath::Deg(0.0),
