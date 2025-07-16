@@ -6,3 +6,4 @@ pub mod parse_to_pcbproblem;
 pub mod parse_to_s_expr;
 pub mod parse_to_struct;
 pub mod s_expr;
+pub mod parse_end_to_end;

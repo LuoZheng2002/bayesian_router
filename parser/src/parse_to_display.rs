@@ -281,7 +281,7 @@ fn parse_net_info(dsn: &DsnStruct) -> Result<HashMap<NetName, DisplayNetInfo>, S
     Ok(net_info)
 }
 
-pub fn dsn_to_display(dsn: DsnStruct) -> Result<(DisplayFormat, ExtraInfo), String> {
+pub fn dsn_to_display(dsn: &DsnStruct) -> Result<DisplayFormat, String> {
     let (width, height, center) = calculate_boundary(&dsn.structure.boundary)?;
     let obstacle_lines: Vec<LineForCollision> = Vec::new();
     let obstacle_polygons: Vec<PolygonForCollision> = Vec::new();

@@ -9,8 +9,8 @@ pub struct Converter;
 impl Converter {
     /// 将DisplayFormat转换为PcbProblem，应用ExtraInfo中的覆盖设置
     pub fn convert(
-        display_format: DisplayFormat,
-        extra_info: ExtraInfo,
+        display_format: &DisplayFormat,
+        extra_info: &ExtraInfo,
     ) -> Result<PcbProblem, String> {
         let mut problem = PcbProblem::new(
             display_format.width,
@@ -23,7 +23,7 @@ impl Converter {
         //problem.obstacle_polygons = display_format.obstacle_polygons;
 
         // 处理每个网络
-        for (net_name, display_net) in display_format.nets {
+        for (net_name, display_net) in &display_format.nets {
             // 确定source pad（优先使用extra_info中的设置）
             let source_pad = Self::determine_source_pad(
                 &net_name,
@@ -48,7 +48,7 @@ impl Converter {
             );
 
             // 添加连接（sink pads）
-            for pad in display_net.pads {
+            for pad in &display_net.pads {
                 // 跳过source pad
                 if pad.name == source_pad.name {
                     continue;
@@ -61,7 +61,7 @@ impl Converter {
                     &extra_info,
                 );
 
-                problem.add_connection(net_name.clone(), pad, sink_width, sink_clearance);
+                problem.add_connection(net_name.clone(), pad.clone(), sink_width, sink_clearance);
             }
         }
 
