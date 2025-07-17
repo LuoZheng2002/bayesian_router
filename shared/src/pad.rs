@@ -33,7 +33,7 @@ pub enum PadLayer{
 }
 
 impl PadLayer{
-    pub fn iter(&self, num_layers: usize) -> impl Iterator<Item = usize> {
+    pub fn get_iter(&self, num_layers: usize) -> impl Iterator<Item = usize> {
         match self {
             PadLayer::Front => 0..1,
             PadLayer::Back => (num_layers - 1)..num_layers,

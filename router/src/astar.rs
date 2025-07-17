@@ -10,7 +10,7 @@ use fixed::traits::Fixed;
 use ordered_float::NotNan;
 
 use crate::block_or_sleep::{block_or_sleep, block_thread};
-use crate::post_process::optimize_path;
+// use crate::post_process::optimize_path;
 
 use shared::{
     binary_heap_item::BinaryHeapItem, hyperparameters::{ASTAR_STRIDE, DISPLAY_ASTAR, ESTIMATE_COEFFICIENT, MAX_TRIALS}, pad::PadLayer, pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel}, prim_shape::{CircleShape, PrimShape, RectangleShape}, trace_path::{AStarNodeDirection, Direction, TraceAnchor, TraceAnchors, TracePath, TraceSegment, Via}, vec2::{FixedPoint, FixedVec2, FloatVec2}
@@ -20,8 +20,8 @@ pub struct AStarModel {
     pub width: f32,
     pub height: f32,
     pub center: FloatVec2,
-    pub obstacle_shapes: Rc<Vec<PrimShape>>,
-    pub obstacle_clearance_shapes: Rc<Vec<PrimShape>>,
+    pub obstacle_shapes: Rc<HashMap<usize, Vec<PrimShape>>>,
+    pub obstacle_clearance_shapes: Rc<HashMap<usize, Vec<PrimShape>>>,
     pub start: FixedVec2,
     pub end: FixedVec2,
     pub start_layers: PadLayer,
@@ -46,7 +46,7 @@ impl AStarModel {
         }
     }
     /// this will call try_push_node_to_frontier multiple times
-    fn try_place_via(&self, position: FixedVec2, layer: usize){
+    fn try_place_vias(&self, position: FixedVec2, layer: usize){
         
     }
     fn get_border_shapes(&self) -> Rc<Vec<PrimShape>> {
@@ -101,19 +101,15 @@ impl AStarModel {
         border_shapes
     }
 
-    fn collides_with_border(&self, shapes: &Vec<PrimShape>) -> bool {
+    fn collides_with_border<'a, I>(&self, shapes: I) -> bool
+    where
+        I: Iterator<Item = &'a PrimShape> + Clone,
+    {
         // the allowed region is between (-width/2, -height/2) and (width/2, height/2)
         // create four overlapping rectangles that encapsulate the allowed region
         // the margin is sufficiently large
         let border_shapes = self.get_border_shapes();
-        for border_shape in border_shapes.iter() {
-            for shape in shapes.iter() {
-                if border_shape.collides_with(shape) {
-                    return true; // collision with the border
-                }
-            }
-        }
-        false
+        Self::check_collision_between_two_sets(shapes, border_shapes.iter())
     }
 
     pub fn clamp_by_collision(
@@ -123,14 +119,52 @@ impl AStarModel {
         layer: usize,
     ) -> Option<FixedVec2> {
         assert!(Direction::is_two_points_valid_direction(start_pos, end_pos));
-        if self.check_collision(start_pos, end_pos, self.trace_width, self.trace_clearance, layer) {
+        if self.check_collision_for_trace(start_pos, end_pos, self.trace_width, self.trace_clearance, layer) {
             self.binary_approach_to_obstacles(start_pos, end_pos, layer)
         } else {
             Some(end_pos)
         }
     }
+    /// outputs shapes and clearance shapes
+    fn construct_trace_segment_shapes(
+        start_position: FixedVec2, 
+        end_position: FixedVec2,
+        trace_width: f32,
+        trace_clearance: f32,
+    ) -> (Vec<PrimShape>, Vec<PrimShape>){
+        assert_ne!(
+            start_position, end_position,
+            "Start and end positions should not be the same"
+        );
+        let trace_segment = TraceSegment {
+            start: start_position,
+            end: end_position,
+            width: trace_width,
+            clearance: trace_clearance,
+            layer: 0, // layer is not used in this function, but we need to provide it
+        };
+        // new trace segment may collide with obstacles or bounds
+        let shapes = trace_segment.to_shapes();
+        let clearance_shapes = trace_segment.to_clearance_shapes();
+        (shapes, clearance_shapes)
+    }
 
-    fn check_collision(
+    fn check_collision_between_two_sets<'a, 'b, I1, I2>(shapes1: I1, shapes2: I2) -> bool
+    where
+        I1: Iterator<Item = &'a PrimShape> + Clone,
+        I2: Iterator<Item = &'b PrimShape> + Clone,
+    {
+        for shape1 in shapes1 {
+            for shape2 in shapes2.clone() {
+                if shape1.collides_with(shape2) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    fn check_collision_for_trace(
         &self,
         start_position: FixedVec2,
         end_position: FixedVec2,
@@ -142,32 +176,47 @@ impl AStarModel {
             start_position, end_position,
             "Start and end positions should not be the same"
         );
-        let trace_segment = TraceSegment {
-            start: start_position,
-            end: end_position,
-            width: trace_width,
-            clearance: trace_clearance,
-            layer,
-        };
-        // new trace segment may collide with obstacles or bounds
-        let shapes = trace_segment.to_shapes();
-        let clearance_shapes = trace_segment.to_clearance_shapes();
-        if self.collides_with_border(&shapes) {
+        let (trace_shapes, trace_clearance_shapes) = 
+            Self::construct_trace_segment_shapes(start_position, end_position, trace_width, trace_clearance);        
+        if self.collides_with_border(trace_shapes.iter()) {
             return true; // collision with the border
         }
-        for obstacle_shape in self.obstacle_shapes.iter() {
-            for clearance_shape in clearance_shapes.iter() {
-                if obstacle_shape.collides_with(clearance_shape) {
-                    return true; // collision with an obstacle
-                }
-            }
+        let obstacle_shapes = self.obstacle_shapes.get(&layer).unwrap();
+        let obstacle_clearance_shapes = self.obstacle_clearance_shapes.get(&layer).unwrap();
+        if Self::check_collision_between_two_sets(trace_shapes.iter(), obstacle_clearance_shapes.iter()) {
+            return true; // collision with an obstacle
         }
-        for obstacle_clearance_shape in self.obstacle_clearance_shapes.iter() {
-            for shape in shapes.iter() {
-                if obstacle_clearance_shape.collides_with(shape) {
-                    return true; // collision with an obstacle clearance shape
-                }
-            }
+        if Self::check_collision_between_two_sets(trace_clearance_shapes.iter(), obstacle_shapes.iter()) {
+            return true; // collision with an obstacle clearance shape
+        }
+        false // no collision
+    }
+    fn check_collision_for_via(
+        &self,
+        position: FixedVec2,
+        via_diameter: f32,
+        clearance: f32,
+        layer: usize,
+    ) -> bool{
+        let shape = PrimShape::Circle(CircleShape {
+            position: position.to_float(),
+            diameter: via_diameter,
+        });
+        let clearance_shape = PrimShape::Circle(CircleShape {
+            position: position.to_float(),
+            diameter: via_diameter + clearance * 2.0,
+        });
+        if self.collides_with_border(std::iter::once(&shape)) {
+            return true; // collision with the border
+        }
+        let obstacle_shapes = self.obstacle_shapes.get(&layer).unwrap();
+        let obstacle_clearance_shapes = self.obstacle_clearance_shapes.get(&layer).unwrap();
+        
+        if Self::check_collision_between_two_sets(std::iter::once(&shape), obstacle_clearance_shapes.iter()) {
+            return true; // collision with an obstacle clearance shape
+        }
+        if Self::check_collision_between_two_sets(std::iter::once(&clearance_shape), obstacle_shapes.iter()) {
+            return true; // collision with an obstacle
         }
         false // no collision
     }
@@ -329,7 +378,7 @@ impl AStarModel {
         for direction in Direction::all_directions() {
             let end_position = *position + direction.to_fixed_vec2(twice_delta);
             assert_ne!(*position, end_position, "assert 1");
-            let collides = self.check_collision(
+            let collides = self.check_collision_for_trace(
                 *position,
                 end_position,
                 self.trace_width,
@@ -468,7 +517,7 @@ impl AStarModel {
     }
     /// 判断当前点是否与目标点对齐，返回对齐的方向
     fn is_aligned_with_end(&self, position: FixedVec2, layer: usize) -> Option<Direction> {
-        let end_layers = self.end_layers.iter(self.num_layers).collect::<HashSet<_>>();
+        let end_layers = self.end_layers.get_iter(self.num_layers).collect::<HashSet<_>>();
         if !end_layers.contains(&layer) {
             return None; // not aligned with end layer
         }
@@ -602,7 +651,7 @@ impl AStarModel {
         end_pos: FixedVec2,
         layer: usize,
     ) -> Option<FixedVec2> {
-        let end_layers = self.end_layers.iter(self.num_layers).collect::<HashSet<_>>();
+        let end_layers = self.end_layers.get_iter(self.num_layers).collect::<HashSet<_>>();
         if !end_layers.contains(&layer) {
             return None; // not aligned with end layer
         }
@@ -667,7 +716,7 @@ impl AStarModel {
             let mid_length = (lower_bound + upper_bound) / 2;
             let temp_end = start_position + direction.to_fixed_vec2(mid_length);
             assert_ne!(start_position, temp_end, "assert 2");
-            if self.check_collision(
+            if self.check_collision_for_trace(
                 start_position,
                 temp_end,
                 self.trace_width,
@@ -760,6 +809,7 @@ impl AStarModel {
         let obstacle_renderables = self
             .obstacle_shapes
             .iter()
+            .flat_map(|(_, shapes)| shapes.iter())
             .map(|shape| {
                 ShapeRenderable {
                     shape: shape.clone(),
@@ -773,6 +823,7 @@ impl AStarModel {
         let obstacle_clearance_renderables = self
             .obstacle_clearance_shapes
             .iter()
+            .flat_map(|(_, shapes)| shapes.iter())
             .map(|shape| {
                 ShapeRenderable {
                     shape: shape.clone(),
@@ -864,7 +915,7 @@ impl AStarModel {
 
         let start_estimated_cost =
             Self::octile_distance(&self.start, &self.end) * ESTIMATE_COEFFICIENT;
-        for layer in self.start_layers.iter(self.num_layers){
+        for layer in self.start_layers.get_iter(self.num_layers){
             let start_node = AstarNode {
                 position: self.start,
                 layer,
@@ -896,17 +947,16 @@ impl AStarModel {
                 }
                 // Reached the end node, construct the trace path
                 let trace_path = current_node.to_trace_path(self.trace_width, self.trace_clearance, self.via_diameter);
-                let new_trace_path = optimize_path(
-                    &trace_path,
-                    &|start, end, width, clearance, layer| {
-                        self.check_collision(start, end, width, clearance, layer)
-                    },
-                    self.trace_width,
-                    self.trace_clearance,
-                );
-                // let new_trace_path = trace_path; // no optimization for now
+                // let trace_path = optimize_path(
+                //     &trace_path,
+                //     &|start, end, width, clearance, layer| {
+                //         self.check_collision(start, end, width, clearance, layer)
+                //     },
+                //     self.trace_width,
+                //     self.trace_clearance,
+                // );
                 return Ok(AStarResult {
-                    trace_path: new_trace_path,
+                    trace_path,
                 });
             }
 
@@ -990,7 +1040,7 @@ impl AStarModel {
             let end_direction = self.is_aligned_with_end(current_node.position, current_node.layer);
             if let Some(end_direction) = end_direction {
                 assert_ne!(current_node.position, self.end, "assert 3");
-                if !self.check_collision(
+                if !self.check_collision_for_trace(
                     current_node.position,
                     self.end,
                     self.trace_width,
@@ -1075,7 +1125,7 @@ impl AStarModel {
                         self.to_nearest_one_step_point(&current_node.position, direction);
                     assert_ne!(current_node.position, end_position, "assert 7");
 
-                    if !self.check_collision(
+                    if !self.check_collision_for_trace(
                         current_node.position,
                         end_position,
                         self.trace_width,

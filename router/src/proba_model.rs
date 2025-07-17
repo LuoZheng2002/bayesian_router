@@ -197,19 +197,20 @@ impl ProbaModel {
                 .filter(|(other_net_id, _)| **other_net_id != *net_name)
                 .flat_map(|(_, net_info)| net_info.connections.keys())
                 .cloned()
+                .collect();            
+            let mut obstacle_source_pad_shapes: HashMap<usize, Vec<PrimShape>> = (0..problem.num_layers)
+                .map(|layer| (layer, Vec::new()))
                 .collect();
-            let obstacle_source_pad_shapes: Vec<PrimShape> = problem
-                .nets
-                .iter()
-                .filter(|(other_net_id, _)| **other_net_id != *net_name)
-                .flat_map(|(_, net_info)| net_info.source.to_shapes())
+            let mut obstacle_source_pad_clearance_shapes: HashMap<usize, Vec<PrimShape>> = (0..problem.num_layers)
+                .map(|layer| (layer, Vec::new()))
                 .collect();
-            let obstacle_source_pad_clearance_shapes: Vec<PrimShape> = problem
-                .nets
-                .iter()
-                .filter(|(other_net_id, _)| **other_net_id != *net_name)
-                .flat_map(|(_, net_info)| net_info.source.to_clearance_shapes())
-                .collect();
+            for (_, net_info) in problem.nets.iter().filter(|(other_net_id, _)| **other_net_id != *net_name) {
+                let source_pad_layers = net_info.source.pad_layer.get_iter(problem.num_layers);
+                for layer in source_pad_layers {
+                    obstacle_source_pad_shapes.get_mut(&layer).unwrap().extend(net_info.source.to_shapes());
+                    obstacle_source_pad_clearance_shapes.get_mut(&layer).unwrap().extend(net_info.source.to_clearance_shapes());
+                }
+            }
             // initialize the number of generated traces for each connection
             let mut num_generated_traces: HashMap<ConnectionID, usize> = self
                 .connection_to_traces
@@ -283,11 +284,21 @@ impl ProbaModel {
                         };
                     sampled_obstacle_traces.insert(*obstacle_connection_id, chosen_proba_trace_id);
                 }
-                let mut obstacle_shapes: Vec<PrimShape> = Vec::new();
-                let mut obstacle_clearance_shapes: Vec<PrimShape> = Vec::new();
-
-                obstacle_shapes.extend(obstacle_source_pad_shapes.clone());
-                obstacle_clearance_shapes.extend(obstacle_source_pad_clearance_shapes.clone());
+                let mut obstacle_shapes: HashMap<usize, Vec<PrimShape>> = (0..problem.num_layers)
+                    .map(|layer| (layer, Vec::new()))
+                    .collect();
+                let mut obstacle_clearance_shapes: HashMap<usize, Vec<PrimShape>> = (0..problem.num_layers)
+                    .map(|layer| (layer, Vec::new()))
+                    .collect();
+                for i in (0..problem.num_layers).into_iter() {
+                    // add source pad shapes and clearance shapes
+                    obstacle_shapes.get_mut(&i).unwrap().extend(
+                        obstacle_source_pad_shapes.get(&i).unwrap().iter().cloned(),
+                    );
+                    obstacle_clearance_shapes.get_mut(&i).unwrap().extend(
+                        obstacle_source_pad_clearance_shapes.get(&i).unwrap().iter().cloned(),
+                    );
+                }
                 // add fixed traces to the obstacle shapes
                 for obstacle_connection_id in obstacle_connections.iter() {
                     let traces = self
@@ -307,11 +318,11 @@ impl ProbaModel {
                     };
                     let trace_segments = &fixed_trace.trace_path.segments;
                     for segment in trace_segments.iter() {
+                        let layer = segment.layer;
                         let shapes = segment.to_shapes();
-                        obstacle_shapes.extend(shapes);
-                        // add clearance shapes
                         let clearance_shapes = segment.to_clearance_shapes();
-                        obstacle_clearance_shapes.extend(clearance_shapes);
+                        obstacle_shapes.get_mut(&layer).unwrap().extend(shapes);
+                        obstacle_clearance_shapes.get_mut(&layer).unwrap().extend(clearance_shapes);
                     }
                 }
                 // add all sampled traces to the obstacle shapes
@@ -330,24 +341,24 @@ impl ProbaModel {
                     );
                     let trace_segments = &proba_trace.trace_path.segments;
                     for segment in trace_segments.iter() {
+                        let layer = segment.layer;
                         let shapes = segment.to_shapes();
-                        obstacle_shapes.extend(shapes);
-                        // add clearance shapes
                         let clearance_shapes = segment.to_clearance_shapes();
-                        obstacle_clearance_shapes.extend(clearance_shapes);
+                        obstacle_shapes.get_mut(&layer).unwrap().extend(shapes);
+                        obstacle_clearance_shapes.get_mut(&layer).unwrap().extend(clearance_shapes);
                     }
                 }
                 // add all pads in other nets to the obstacle shapes
                 for obstacle_connection_id in obstacle_connections.iter() {
-                    let connection = connections.get(obstacle_connection_id).expect(
-                        format!(
-                            "ConnectionID {:?} not found in connections",
-                            obstacle_connection_id
-                        )
-                        .as_str(),
-                    );
-                    let sink_pad_shapes = connection.sink.to_shapes();
-                    obstacle_shapes.extend(sink_pad_shapes);
+                    let connection = connections.get(obstacle_connection_id).unwrap();
+                    let pad = &connection.sink;
+                    let pad_layers = pad.pad_layer.get_iter(problem.num_layers);
+                    let pad_shapes = pad.to_shapes();
+                    let pad_clearance_shapes = pad.to_clearance_shapes();
+                    for layer in pad_layers {
+                        obstacle_shapes.get_mut(&layer).unwrap().extend(pad_shapes.clone());
+                        obstacle_clearance_shapes.get_mut(&layer).unwrap().extend(pad_clearance_shapes.clone());
+                    }
                 }
                 let obstacle_shapes = Rc::new(obstacle_shapes);
                 let obstacle_clearance_shapes = Rc::new(obstacle_clearance_shapes);
