@@ -275,6 +275,9 @@ impl TraceSegment {
         vec![clearance_start_circle, clearance_end_circle, clearance_rect]
     }
     pub fn collides_with(&self, other: &TraceSegment) -> bool {
+        if self.layer != other.layer {
+            return false; // No collision if they are on different layers
+        }
         let self_shapes = self.to_shapes();
         let self_clearance_shapes = self.to_clearance_shapes();
         let other_shapes = other.to_shapes();
@@ -319,6 +322,36 @@ pub struct Via{
     pub clearance: f32, // Clearance around the via
     pub min_layer: usize, // Inclusive, the layer where the via starts
     pub max_layer: usize, // Inclusive, the layer where the via ends
+}
+
+impl Via{
+    pub fn to_renderables(&self, color: [f32; 4]) -> Vec<ShapeRenderable> {
+        // let hole_shape = PrimShape::Circle(CircleShape {
+        //     position: self.position.to_float(),
+        //     diameter: self.diameter / 2.0, // The hole is half the diameter
+        // });
+        // let hole_color = [0.0, 0.0, 0.0, color[3]]; // Black hole
+        let via_shape = PrimShape::Circle(CircleShape {
+            position: self.position.to_float(),
+            diameter: self.diameter,
+        });
+        // let hole_renderable = ShapeRenderable {
+        //     shape: hole_shape,
+        //     color: hole_color,
+        // };
+        let via_renderable = ShapeRenderable {
+            shape: via_shape,
+            color,
+        };
+        vec![via_renderable]
+    }
+    pub fn to_clearance_renderables(&self, color: [f32; 4]) -> Vec<ShapeRenderable> {
+        let clearance_shape = PrimShape::Circle(CircleShape {
+            position: self.position.to_float(),
+            diameter: self.diameter + self.clearance * 2.0,
+        });
+        vec![ShapeRenderable { shape: clearance_shape, color }]
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -367,16 +400,20 @@ impl TracePath {
 
     pub fn to_renderables(&self, color: [f32; 4]) -> [RenderableBatch; 2] {
         let mut renderables = Vec::new();
-        // Render the segments
-        for segment in &self.segments {
-            let segment_renderables = segment.to_renderables(color);
-            renderables.extend(segment_renderables);
-        }
         let mut clearance_renderables = Vec::new();
         let clearance_color = [color[0], color[1], color[2], color[3] / 2.0]; // semi-transparent color
+        // Render the segments
         for segment in &self.segments {
+            let segment_renderables = segment.to_renderables(color);            
             let segment_clearance_renderables = segment.to_clearance_renderables(clearance_color); // semi-transparent color
+            renderables.extend(segment_renderables);
             clearance_renderables.extend(segment_clearance_renderables);
+        }
+        for via in &self.vias {
+            let via_renderables = via.to_renderables(color);
+            let via_clearance_renderables = via.to_clearance_renderables(clearance_color); // semi-transparent color
+            renderables.extend(via_renderables);
+            clearance_renderables.extend(via_clearance_renderables);
         }
         [
             RenderableBatch(renderables),

@@ -13,7 +13,7 @@ use crate::block_or_sleep::{block_or_sleep, block_thread};
 // use crate::post_process::optimize_path;
 
 use shared::{
-    binary_heap_item::BinaryHeapItem, hyperparameters::{ASTAR_STRIDE, DISPLAY_ASTAR, ESTIMATE_COEFFICIENT, MAX_TRIALS}, pad::PadLayer, pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel}, prim_shape::{CircleShape, PrimShape, RectangleShape}, trace_path::{AStarNodeDirection, Direction, TraceAnchor, TraceAnchors, TracePath, TraceSegment, Via}, vec2::{FixedPoint, FixedVec2, FloatVec2}
+    binary_heap_item::BinaryHeapItem, hyperparameters::{ASTAR_STRIDE, DISPLAY_ASTAR, ESTIMATE_COEFFICIENT, MAX_TRIALS, VIA_COST}, pad::PadLayer, pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel}, prim_shape::{CircleShape, PrimShape, RectangleShape}, trace_path::{AStarNodeDirection, Direction, TraceAnchor, TraceAnchors, TracePath, TraceSegment, Via}, vec2::{FixedPoint, FixedVec2, FloatVec2}
 };
 
 pub struct AStarModel {
@@ -45,10 +45,7 @@ impl AStarModel {
             }
         }
     }
-    /// this will call try_push_node_to_frontier multiple times
-    fn try_place_vias(&self, position: FixedVec2, layer: usize){
-        
-    }
+    
     fn get_border_shapes(&self) -> Rc<Vec<PrimShape>> {
         if let Some(border_shapes) = self.border_cache.borrow().as_ref() {
             return border_shapes.clone();
@@ -1003,7 +1000,12 @@ impl AStarModel {
                 }
                 // let length: f64 = (direction.to_fixed_vec2().length() * length).to_num();
                 let length: f64 = (end_position - current_node.position).length().to_num();
-                let actual_cost = current_node.actual_cost + length; // to do: add turn penalty
+                let via_cost = if let AStarNodeDirection::Vertical { .. } = direction {
+                    VIA_COST // vertical movement has a via cost
+                } else {
+                    0.0 // no via cost for planar movements
+                };
+                let actual_cost = current_node.actual_cost + length + via_cost; // to do: add turn penalty
                 let actual_length = current_node.actual_length + length;
                 let estimated_cost =
                     AStarModel::octile_distance(&end_position, &self.end) * ESTIMATE_COEFFICIENT;
@@ -1024,6 +1026,8 @@ impl AStarModel {
                     value: Rc::new(new_node),
                 });
             };
+
+            
 
             assert!(
                 !current_node.position.is_x_odd_y_odd()
@@ -1054,6 +1058,42 @@ impl AStarModel {
                     condition_count = condition_count + 1;
                     try_push_node_to_frontier(AStarNodeDirection::Planar(end_direction), self.end, current_node.layer);
                 }
+            }
+
+            // this will call try_push_node_to_frontier multiple times
+            let mut try_place_vias = |position: FixedVec2, via_diameter: f32, clearance: f32, layer: usize| {
+                if self.check_collision_for_via(position, via_diameter, clearance, layer){
+                    return;
+                }
+                for lower_layer in (0..layer).rev(){
+                    if self.check_collision_for_via(position, via_diameter, clearance, lower_layer){
+                        break;
+                    }
+                    try_push_node_to_frontier(
+                        AStarNodeDirection::Vertical { from_layer: layer },
+                        position,
+                        lower_layer,
+                    );
+                }
+                for upper_layer in (layer + 1)..self.num_layers {
+                    if self.check_collision_for_via(position, via_diameter, clearance, upper_layer){
+                        break;
+                    }
+                    try_push_node_to_frontier(
+                        AStarNodeDirection::Vertical { from_layer: layer },
+                        position,
+                        upper_layer,
+                    );
+                }
+            };
+            // new: try place a via if the current node is at a grid point
+            if self.is_grid_point(&current_node.position) {
+                try_place_vias(
+                    current_node.position,
+                    self.via_diameter,
+                    self.trace_clearance,
+                    current_node.layer,
+                );
             }
 
             // process grid points or one-step-to-grid-points
