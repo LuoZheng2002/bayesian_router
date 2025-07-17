@@ -116,7 +116,13 @@ impl AStarModel {
         layer: usize,
     ) -> Option<FixedVec2> {
         assert!(Direction::is_two_points_valid_direction(start_pos, end_pos));
-        if self.check_collision_for_trace(start_pos, end_pos, self.trace_width, self.trace_clearance, layer) {
+        let end_circle_clearance_shape = PrimShape::Circle(CircleShape {
+            position: end_pos.to_float(),
+            diameter: self.trace_width + self.trace_clearance * 2.0,
+        });
+        let obstacle_shapes = self.obstacle_shapes.get(&layer).unwrap();
+        if Self::check_collision_between_two_sets(std::iter::once(&end_circle_clearance_shape), obstacle_shapes.iter())
+            ||self.check_collision_for_trace(start_pos, end_pos, self.trace_width, self.trace_clearance, layer) {
             self.binary_approach_to_obstacles(start_pos, end_pos, layer)
         } else {
             Some(end_pos)
@@ -175,9 +181,6 @@ impl AStarModel {
         );
         let (trace_shapes, trace_clearance_shapes) = 
             Self::construct_trace_segment_shapes(start_position, end_position, trace_width, trace_clearance);        
-        if self.collides_with_border(trace_shapes.iter()) {
-            return true; // collision with the border
-        }
         let obstacle_shapes = self.obstacle_shapes.get(&layer).unwrap();
         let obstacle_clearance_shapes = self.obstacle_clearance_shapes.get(&layer).unwrap();
         if Self::check_collision_between_two_sets(trace_shapes.iter(), obstacle_clearance_shapes.iter()) {
@@ -185,6 +188,9 @@ impl AStarModel {
         }
         if Self::check_collision_between_two_sets(trace_clearance_shapes.iter(), obstacle_shapes.iter()) {
             return true; // collision with an obstacle clearance shape
+        }
+        if self.collides_with_border(trace_shapes.iter()) {
+            return true; // collision with the border
         }
         false // no collision
     }
@@ -709,11 +715,17 @@ impl AStarModel {
             (start_position.x - end_position.x).abs(),
             (start_position.y - end_position.y).abs(),
         );
+        let obstacle_shapes = self.obstacle_shapes.get(&layer).unwrap();
         while lower_bound + FixedPoint::DELTA < upper_bound {
             let mid_length = (lower_bound + upper_bound) / 2;
             let temp_end = start_position + direction.to_fixed_vec2(mid_length);
             assert_ne!(start_position, temp_end, "assert 2");
-            if self.check_collision_for_trace(
+            let end_circle_clearance_shape = PrimShape::Circle(CircleShape {
+                position: temp_end.to_float(),
+                diameter: self.trace_width + self.trace_clearance * 2.0,
+            });
+            if Self::check_collision_between_two_sets(std::iter::once(&end_circle_clearance_shape), obstacle_shapes.iter())
+                || self.check_collision_for_trace(
                 start_position,
                 temp_end,
                 self.trace_width,
