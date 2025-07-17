@@ -1,5 +1,5 @@
 use cgmath::Deg;
-use shared::{pad::{Pad, PadName, PadShape}, pcb_problem::{NetName, PcbProblem}, vec2::FloatVec2};
+use shared::{pad::{Pad, PadLayer, PadName, PadShape}, pcb_problem::{NetName, PcbProblem}, vec2::FloatVec2};
 
 
 
@@ -7,7 +7,7 @@ use shared::{pad::{Pad, PadName, PadShape}, pcb_problem::{NetName, PcbProblem}, 
 
 
 pub fn pcb_problem1()->PcbProblem{
-    let mut pcb_problem = PcbProblem::new(15.0, 15.0, FloatVec2{x: 0.0, y: 0.0}, 1.0);
+    let mut pcb_problem = PcbProblem::new(15.0, 15.0, FloatVec2{x: 0.0, y: 0.0}, 2, 1.0);
     let red_net_name = NetName("red".into());
     pcb_problem.add_net(red_net_name.clone(), 
         Pad{
@@ -16,9 +16,11 @@ pub fn pcb_problem1()->PcbProblem{
             shape: PadShape::Circle { diameter: 0.6},
             rotation: Deg(0.0),
             clearance: 0.05,
+            pad_layer: PadLayer::Front,
         },
         0.5,
         0.05,
+        0.8,
     );
     let red_sink_pad1 = Pad { 
         name: PadName("red_sink1".into()),
@@ -26,6 +28,7 @@ pub fn pcb_problem1()->PcbProblem{
         shape: PadShape::Rectangle { width: 1.0, height: 1.0 },
         rotation: Deg(0.0),
         clearance: 0.05,
+        pad_layer: PadLayer::Front,
     };
     let mut red_sink_pad2 = red_sink_pad1.clone();
     red_sink_pad2.position = FloatVec2 { x: 0.0, y: 5.0 };
@@ -65,9 +68,11 @@ pub fn pcb_problem1()->PcbProblem{
             shape: PadShape::Circle { diameter: 0.8 },
             rotation: Deg(0.0),
             clearance: 0.05,
+            pad_layer: PadLayer::Front,
         },
         0.5,
         0.05,
+        0.8,
     );
     let purple_sink_pad1 = Pad{
         name: PadName("purple_sink1".into()),
@@ -75,6 +80,7 @@ pub fn pcb_problem1()->PcbProblem{
         shape: PadShape::Circle { diameter: 0.8 },
         rotation: Deg(0.0),
         clearance: 0.05,
+        pad_layer: PadLayer::Front,
     };
     let purple_sink_pad2 = Pad{
         name: PadName("purple_sink2".into()),
@@ -82,6 +88,7 @@ pub fn pcb_problem1()->PcbProblem{
         shape: PadShape::Circle { diameter: 0.8 },
         rotation: Deg(0.0),
         clearance: 0.05,
+        pad_layer: PadLayer::Front,
     };
     pcb_problem.add_connection(
         purple_net_name.clone(),
@@ -103,9 +110,11 @@ pub fn pcb_problem1()->PcbProblem{
             shape: PadShape::Circle { diameter: 0.8 },
             rotation: Deg(0.0),
             clearance: 0.05,
+            pad_layer: PadLayer::Front,
         },
         0.5,
         0.05,
+        0.8,
     );
     let blue_sink_pad1 = Pad{
         name: PadName("blue_sink1".into()),
@@ -113,6 +122,7 @@ pub fn pcb_problem1()->PcbProblem{
         shape: PadShape::Circle { diameter: 0.8 },
         rotation: Deg(0.0),
         clearance: 0.05,
+        pad_layer: PadLayer::Front,
     };
     let blue_sink_pad2 = Pad{
         name: PadName("blue_sink2".into()),
@@ -120,6 +130,7 @@ pub fn pcb_problem1()->PcbProblem{
         shape: PadShape::Circle { diameter: 0.8 },
         rotation: Deg(0.0),
         clearance: 0.05,
+        pad_layer: PadLayer::Front,
     };
     pcb_problem.add_connection(
         blue_net_name.clone(), 
@@ -141,9 +152,11 @@ pub fn pcb_problem1()->PcbProblem{
             shape: PadShape::Circle { diameter: 0.6 },
             rotation: Deg(0.0),
             clearance: 0.05,
+            pad_layer: PadLayer::Front,
         },
         0.5,
         0.05,
+        0.8,
     );
     let gray_sink_pad = Pad{
         name: PadName("gray_sink".into()),
@@ -151,6 +164,7 @@ pub fn pcb_problem1()->PcbProblem{
         shape: PadShape::Circle { diameter: 0.6 },
         rotation: Deg(0.0),
         clearance: 0.05,
+        pad_layer: PadLayer::Front,
     };
     pcb_problem.add_connection(
         gray_net_name.clone(), 
@@ -167,9 +181,11 @@ pub fn pcb_problem1()->PcbProblem{
             shape: PadShape::Circle { diameter: 0.8 },
         rotation: Deg(0.0),
         clearance: 0.05,
-        },
+        pad_layer: PadLayer::Front,
+    },
         0.5,
         0.05,
+        0.8,
     );
     let brown_sink_pad = Pad{
         name: PadName("brown_sink".into()),
@@ -177,6 +193,7 @@ pub fn pcb_problem1()->PcbProblem{
         shape: PadShape::Circle { diameter: 0.8 },
         rotation: Deg(0.0),
         clearance: 0.05,
+        pad_layer: PadLayer::Front,
     };
     pcb_problem.add_connection(
         brown_net_name,
@@ -188,7 +205,7 @@ pub fn pcb_problem1()->PcbProblem{
 }
 
 pub fn pcb_problem2()->PcbProblem{
-    let mut pcb_problem = PcbProblem::new(20.0, 20.0, FloatVec2{x: 0.0, y: 0.0}, 1.0);
+    let mut pcb_problem = PcbProblem::new(20.0, 20.0, FloatVec2{x: 0.0, y: 0.0}, 2, 1.0);
     let red_net_name = NetName("red".into());
     let green_net_name = NetName("green".into());
     let blue_net_name = NetName("blue".into());
@@ -200,9 +217,11 @@ pub fn pcb_problem2()->PcbProblem{
             shape: PadShape::Circle { diameter: 0.6},
             rotation: Deg(0.0),
             clearance: 0.1,
+            pad_layer: PadLayer::Front,
         },
         0.5,
         0.2,
+        0.8,
     );
     pcb_problem.add_net(green_net_name.clone(), 
         Pad{
@@ -211,9 +230,11 @@ pub fn pcb_problem2()->PcbProblem{
             shape: PadShape::Circle { diameter: 0.6},
             rotation: Deg(0.0),
             clearance: 0.1,
+            pad_layer: PadLayer::Front,
         },
         0.5,
         0.2,
+        0.8,
     );
     pcb_problem.add_net(blue_net_name.clone(), 
         Pad{
@@ -222,9 +243,11 @@ pub fn pcb_problem2()->PcbProblem{
             shape: PadShape::Circle { diameter: 0.6},
             rotation: Deg(0.0),
             clearance: 0.1,
+            pad_layer: PadLayer::Front,
         },
         0.5,
         0.2,
+        0.8,
     );
     pcb_problem.add_net(yellow_net_name.clone(), 
         Pad{
@@ -233,9 +256,11 @@ pub fn pcb_problem2()->PcbProblem{
             shape: PadShape::Circle { diameter: 0.6},
             rotation: Deg(0.0),
             clearance: 0.1,
+            pad_layer: PadLayer::Front,
         },
         0.5,
         0.2,
+        0.8,
     );
 
     let red_sink_pad = Pad{
@@ -244,6 +269,7 @@ pub fn pcb_problem2()->PcbProblem{
         shape: PadShape::Rectangle { width: 0.8, height: 0.8 },
         rotation: Deg(0.0),
         clearance: 0.2,
+        pad_layer: PadLayer::Front,
     };
     let green_sink_pad = Pad{
         name: PadName("green_sink".into()),
@@ -251,6 +277,7 @@ pub fn pcb_problem2()->PcbProblem{
         shape: PadShape::Circle { diameter: 0.6 },
         rotation: Deg(0.0),
         clearance: 0.1,
+        pad_layer: PadLayer::Front,
     };
     let blue_sink_pad = Pad{
         name: PadName("blue_sink".into()),
@@ -258,6 +285,7 @@ pub fn pcb_problem2()->PcbProblem{
         shape: PadShape::Circle { diameter: 0.6 },
         rotation: Deg(0.0),
         clearance: 0.15,
+        pad_layer: PadLayer::Front,
     };
     let yellow_sink_pad = Pad{
         name: PadName("yellow_sink".into()),
@@ -265,6 +293,7 @@ pub fn pcb_problem2()->PcbProblem{
         shape: PadShape::Circle { diameter: 0.6 },
         rotation: Deg(0.0),
         clearance: 0.1,
+        pad_layer: PadLayer::Front,
     };
     pcb_problem.add_connection(
         red_net_name.clone(), 

@@ -27,6 +27,7 @@ pub struct NetInfo {
     pub source: Pad,                         // Color of the net
     pub source_trace_width: f32, // Width of the trace from the source pad
     pub source_trace_clearance: f32, // Clearance around the trace from the source pad
+    pub via_diameter: f32, // Diameter of the via, obtained from via name and accessed through padstacks
     pub connections: HashMap<ConnectionID, Rc<Connection>>, // List of connections in the net, the source pad is the same
 }
 
@@ -49,6 +50,7 @@ pub struct PcbProblem {
     pub width: f32,
     pub height: f32,
     pub center: FloatVec2,
+    pub num_layers: usize, // 0: front, num_layers - 1: back
     pub obstacle_lines: Vec<LineForCollision>, // Lines that represent obstacles in the PCB
     pub obstacle_polygons: Vec<PolygonForCollision>, // Polygons that represent obstacles in the PCB
     pub nets: HashMap<NetName, NetInfo>, // NetID to NetInfo
@@ -70,11 +72,12 @@ pub struct PcbSolution {
 }
 
 impl PcbProblem {
-    pub fn new(width: f32, height: f32, center: FloatVec2, scale_down_factor: f32) -> Self {
+    pub fn new(width: f32, height: f32, center: FloatVec2, num_layers: usize, scale_down_factor: f32) -> Self {
         PcbProblem {
             width,
             height,
             center,
+            num_layers,
             obstacle_lines: Vec::new(),
             scale_down_factor,
             obstacle_polygons: Vec::new(),
@@ -83,7 +86,7 @@ impl PcbProblem {
             distinct_color_generator: Box::new(DistinctColorGenerator::new()),
         }
     }
-    pub fn add_net(&mut self, net_name: NetName, source: Pad, source_trace_width: f32, source_trace_clearance: f32) {
+    pub fn add_net(&mut self, net_name: NetName, source: Pad, source_trace_width: f32, source_trace_clearance: f32, via_diameter: f32) {
         assert!(!self.nets.contains_key(&net_name), "NetID already exists: {}", net_name.0);
         let color = self.distinct_color_generator.next().expect("Distinct color generator exhausted");
         let net_info = NetInfo {
@@ -93,6 +96,7 @@ impl PcbProblem {
             source,
             source_trace_width,
             source_trace_clearance,
+            via_diameter,
         };
         self.nets.insert(net_name, net_info);
     }

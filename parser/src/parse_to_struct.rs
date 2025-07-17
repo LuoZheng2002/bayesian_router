@@ -5,8 +5,7 @@ use shared::vec2::FloatVec2;
 
 use crate::{
     dsn_struct::{
-        Boundary, Component, ComponentInst, DsnStruct, Image, Layer, Library, Net, Netclass,
-        Network, PadStack, Pin, Pin2, Placement, Resolution, Shape, Structure,
+        Boundary, Component, ComponentInst, DsnStruct, Image, Layer, Library, Net, Netclass, Network, PadStack, Pin, Pin2, Placement, PlacementLayer, Resolution, Shape, Structure
     },
     s_expr::SExpr,
 };
@@ -226,6 +225,18 @@ fn parse_placement(s_expr: &Vec<SExpr>) -> Result<Placement, String> {
                 .ok_or("Expected y position to be an atom")?
                 .parse::<f32>()
                 .map_err(|e| format!("Failed to parse y position: {}", e))?;
+            
+            let placement_layer_string = place_list
+                .get(4)
+                .ok_or("Expected placement layer in place list")?
+                .as_atom()
+                .ok_or("Expected placement layer to be an atom")?
+                .to_string();
+            let placement_layer = match placement_layer_string.as_str() {
+                "front" => PlacementLayer::Front,
+                "back" => PlacementLayer::Back,
+                _ => return Err(format!("Unknown placement layer: {}", placement_layer_string)),
+            };
 
             let rotation = place_list
                 .get(5)
@@ -243,6 +254,7 @@ fn parse_placement(s_expr: &Vec<SExpr>) -> Result<Placement, String> {
                     y: y_pos,
                 },
                 rotation,
+                placement_layer, // Use the parsed placement layer
             };
             instances.push(instance);
         }

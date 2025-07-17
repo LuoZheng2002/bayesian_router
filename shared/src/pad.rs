@@ -25,6 +25,23 @@ pub enum PadShape {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PadName(pub String);
 
+#[derive(Debug, Clone, Copy)]
+pub enum PadLayer{
+    Front,
+    Back,
+    All,
+}
+
+impl PadLayer{
+    pub fn iter(&self, num_layers: usize) -> impl Iterator<Item = usize> {
+        match self {
+            PadLayer::Front => 0..1,
+            PadLayer::Back => (num_layers - 1)..num_layers,
+            PadLayer::All => 0..num_layers,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Pad {
     pub name: PadName,
@@ -32,6 +49,7 @@ pub struct Pad {
     pub shape: PadShape,
     pub rotation: cgmath::Deg<f32>, // Rotation in degrees
     pub clearance: f32,             // Clearance around the pad
+    pub pad_layer: PadLayer, // Layer of the pad
 }
 
 

@@ -349,24 +349,10 @@ impl ProbaModel {
                     let sink_pad_shapes = connection.sink.to_shapes();
                     obstacle_shapes.extend(sink_pad_shapes);
                 }
-                let mut astar_model = AStarModel {
-                    width: problem.width,
-                    height: problem.height,
-                    center: problem.center,
-                    obstacle_shapes,
-                    obstacle_clearance_shapes,
-                    start: FixedVec2 {
-                        x: Default::default(),
-                        y: Default::default(),
-                    },
-                    end: FixedVec2 {
-                        x: Default::default(),
-                        y: Default::default(),
-                    },
-                    trace_width: 0.0,                 // This will be set later
-                    trace_clearance: 0.0,             // This will be set later
-                    border_cache: RefCell::new(None), // Cache for border points, initialized to None
-                };
+                let obstacle_shapes = Rc::new(obstacle_shapes);
+                let obstacle_clearance_shapes = Rc::new(obstacle_clearance_shapes);
+                // to do: reuse the obstacle shapes and obstacle clearance shapes
+                
                 let connections = &problem
                     .nets
                     .get(net_name)
@@ -394,32 +380,42 @@ impl ProbaModel {
 
                 for (connection_id, connection) in connections.iter() {
                     let connection_num_generated_traces =
-                        num_generated_traces.get(connection_id).expect(
+                        *num_generated_traces.get(connection_id).expect(
                             format!(
                                 "ConnectionID {:?} not found in num_generated_traces",
                                 connection_id
                             )
                             .as_str(),
                         );
-                    if *connection_num_generated_traces >= max_num_traces {
+                    if connection_num_generated_traces >= max_num_traces {
                         println!(
                             "ConnectionID {:?} already has enough traces, skipping",
                             connection_id
                         );
                         continue; // Skip this connection if it already has enough traces
                     }
-                    // sample a trace for this connection
-                    astar_model.start = {
-                        let start = net_info.source.position.to_fixed();
-                        start.to_nearest_even_even()
-                    };
-                    astar_model.end = {
-                        let end = connection.sink.position.to_fixed();
-                        end.to_nearest_even_even()
-                    };
-                    astar_model.trace_width = connection.sink_trace_width;
-                    astar_model.trace_clearance = connection.sink_trace_clearance;
 
+                    // sample a trace for this connection
+                    let start = net_info.source.position.to_fixed().to_nearest_even_even();
+                    let end = connection.sink.position.to_fixed().to_nearest_even_even();
+                    let start_layers = net_info.source.pad_layer;
+                    let end_layers = connection.sink.pad_layer;
+                    let astar_model = AStarModel {
+                        width: problem.width,
+                        height: problem.height,
+                        center: problem.center,
+                        obstacle_shapes: obstacle_shapes.clone(),
+                        obstacle_clearance_shapes: obstacle_clearance_shapes.clone(),
+                        start,
+                        end,
+                        start_layers,
+                        end_layers,
+                        num_layers: problem.num_layers,
+                        trace_width: connection.sink_trace_width,            
+                        trace_clearance: connection.sink_trace_clearance,    
+                        via_diameter: net_info.via_diameter,
+                        border_cache: RefCell::new(None), // Cache for border points, initialized to None
+                    };                    
                     // run A* algorithm to find a path
                     let astar_result = astar_model.run(pcb_render_model.clone());
                     let astar_result = match astar_result {

@@ -1,0 +1,12 @@
+different layers have different obstacles
+A* start can be in one or multiple layers (push nodes of different layers to frontier)
+A* end can be in one or multiple layers
+
+vias cannot collide with pads even if they are of the same net
+but vias and pads of the same net do not need to consider clearance
+
+When to go to a new layer:
+collides with an obstacle, and then it will back up and try to drill to different layers
+push all to the frontier at the same time to avoid adding tags to the nodes
+
+

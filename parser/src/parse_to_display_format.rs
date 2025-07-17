@@ -17,6 +17,7 @@ pub struct DisplayFormat{
     pub width: f32, // in specctra dsn units
     pub height: f32, // in specctra dsn units
     pub center: FloatVec2, // Center of the PCB, in specctra dsn units
+    pub num_layers: usize, // 0: front, num_layers - 1: back
     pub obstacle_lines: Vec<LineForCollision>, // Lines that represent obstacles in the PCB
     pub obstacle_polygons: Vec<PolygonForCollision>, // Polygons that represent obstacles in the PCB
     pub nets: HashMap<NetName, DisplayNetInfo>, // NetID to DisplayNetInfo

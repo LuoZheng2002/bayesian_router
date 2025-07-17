@@ -16,6 +16,15 @@ pub enum Direction {
     BottomRight,
     BottomLeft,
 }
+
+#[derive(Debug, Clone, Copy)]
+pub enum AStarNodeDirection{
+    None, // neither horizontal nor vertical
+    Planar(Direction), // Direction in the plane
+    Vertical{
+        from_layer: usize, // Layer to place the via from
+    }
+}
 impl Direction {
     pub fn opposite(&self)-> Direction {
         match self {
@@ -207,7 +216,9 @@ pub struct TraceSegment {
     pub end: FixedVec2,   // End point of the trace segment
     pub width: f32,       // Width of the trace segment
     pub clearance: f32,   // Clearance around the trace segment
+    pub layer: usize,     // Layer of the trace segment
 }
+
 
 impl TraceSegment {
     pub fn get_direction(&self) -> Direction {
@@ -300,14 +311,32 @@ impl TraceSegment {
     }
 }
 
+
+#[derive(Debug, Clone)]
+pub struct Via{
+    pub position: FixedVec2, // Position of the via
+    pub diameter: f32, // Diameter of the via
+    pub clearance: f32, // Clearance around the via
+    pub min_layer: usize, // Inclusive, the layer where the via starts
+    pub max_layer: usize, // Inclusive, the layer where the via ends
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct TraceAnchors(pub Vec<FixedVec2>); // List of turning points in the trace path, including start and end
+pub struct TraceAnchor{
+    pub position: FixedVec2,
+    pub start_layer: usize, // Inclusive, the layer where the trace starts
+    pub end_layer: usize, // Inclusive, the layer where the trace ends
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct TraceAnchors(pub Vec<TraceAnchor>); // List of turning points in the trace path, including start and end
 
 #[derive(Debug, Clone)]
 pub struct TracePath {
     pub anchors: TraceAnchors, // List of turning points in the trace path, including start and end
     pub segments: Vec<TraceSegment>, // List of segments in the trace path
-    pub length: f64,
+    pub vias: Vec<Via>, // List of vias in the trace path
+    pub total_length: f64,
 }
 // shrink?
 
@@ -325,7 +354,7 @@ impl TracePath {
 
     pub fn get_score(&self) -> f64 {
         // to do
-        let score_raw = self.length; // placeholder for actual score calculation
+        let score_raw = self.total_length; // placeholder for actual score calculation
         let k = f64::ln(2.0) / HALF_PROBABILITY_RAW_SCORE;
         let score = f64::exp(-k * score_raw);
         assert!(

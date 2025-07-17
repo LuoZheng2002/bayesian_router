@@ -16,6 +16,7 @@ impl Converter {
             display_format.width,
             display_format.height,
             display_format.center,
+            display_format.num_layers,
             display_format.scale_down_factor,
         );
 
@@ -46,6 +47,7 @@ impl Converter {
                 source_pad.clone(),
                 source_width,
                 source_clearance,
+                display_net.via_diameter,
             );
 
             // 添加连接（sink pads）

@@ -13,28 +13,42 @@ use crate::block_or_sleep::{block_or_sleep, block_thread};
 use crate::post_process::optimize_path;
 
 use shared::{
-    binary_heap_item::BinaryHeapItem,
-    hyperparameters::{ASTAR_STRIDE, DISPLAY_ASTAR, ESTIMATE_COEFFICIENT, MAX_TRIALS},
-    pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel},
-    prim_shape::{CircleShape, PrimShape, RectangleShape},
-    trace_path::{Direction, TraceAnchors, TracePath, TraceSegment},
-    vec2::{FixedPoint, FixedVec2, FloatVec2},
+    binary_heap_item::BinaryHeapItem, hyperparameters::{ASTAR_STRIDE, DISPLAY_ASTAR, ESTIMATE_COEFFICIENT, MAX_TRIALS}, pad::PadLayer, pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel}, prim_shape::{CircleShape, PrimShape, RectangleShape}, trace_path::{AStarNodeDirection, Direction, TraceAnchor, TraceAnchors, TracePath, TraceSegment, Via}, vec2::{FixedPoint, FixedVec2, FloatVec2}
 };
 
 pub struct AStarModel {
     pub width: f32,
     pub height: f32,
     pub center: FloatVec2,
-    pub obstacle_shapes: Vec<PrimShape>,
-    pub obstacle_clearance_shapes: Vec<PrimShape>,
+    pub obstacle_shapes: Rc<Vec<PrimShape>>,
+    pub obstacle_clearance_shapes: Rc<Vec<PrimShape>>,
     pub start: FixedVec2,
     pub end: FixedVec2,
+    pub start_layers: PadLayer,
+    pub end_layers: PadLayer,
+    pub num_layers: usize,
     pub trace_width: f32,
     pub trace_clearance: f32,
+    pub via_diameter: f32,
     pub border_cache: RefCell<Option<Rc<Vec<PrimShape>>>>,
 }
 
 impl AStarModel {
+    fn in_layers(&self, layer_index: usize, layers: PadLayer)->bool{
+        assert!(layer_index < self.num_layers, "Layer index out of bounds: {}, num_layers: {}", layer_index, self.num_layers);
+        match layers {
+            PadLayer::All => true,
+            PadLayer::Front => layer_index == 0,
+            PadLayer::Back => {
+                assert!(self.num_layers > 1, "Number of layers must be greater than 1");
+                layer_index == self.num_layers - 1
+            }
+        }
+    }
+    /// this will call try_push_node_to_frontier multiple times
+    fn try_place_via(&self, position: FixedVec2, layer: usize){
+        
+    }
     fn get_border_shapes(&self) -> Rc<Vec<PrimShape>> {
         if let Some(border_shapes) = self.border_cache.borrow().as_ref() {
             return border_shapes.clone();
@@ -106,10 +120,11 @@ impl AStarModel {
         &self,
         start_pos: FixedVec2,
         end_pos: FixedVec2,
+        layer: usize,
     ) -> Option<FixedVec2> {
         assert!(Direction::is_two_points_valid_direction(start_pos, end_pos));
-        if self.check_collision(start_pos, end_pos, self.trace_width, self.trace_clearance) {
-            self.binary_approach_to_obstacles(start_pos, end_pos)
+        if self.check_collision(start_pos, end_pos, self.trace_width, self.trace_clearance, layer) {
+            self.binary_approach_to_obstacles(start_pos, end_pos, layer)
         } else {
             Some(end_pos)
         }
@@ -121,6 +136,7 @@ impl AStarModel {
         end_position: FixedVec2,
         trace_width: f32,
         trace_clearance: f32,
+        layer: usize,
     ) -> bool {
         assert_ne!(
             start_position, end_position,
@@ -131,6 +147,7 @@ impl AStarModel {
             end: end_position,
             width: trace_width,
             clearance: trace_clearance,
+            layer,
         };
         // new trace segment may collide with obstacles or bounds
         let shapes = trace_segment.to_shapes();
@@ -305,7 +322,7 @@ impl AStarModel {
         }
         result
     }
-    fn radial_directions_wrt_obstacles(&self, position: &FixedVec2) -> Vec<Direction> {
+    fn radial_directions_wrt_obstacles(&self, position: &FixedVec2, layer: usize) -> Vec<Direction> {
         let mut directions: Vec<Direction> = Vec::new();
         let mut collides_at_direction: HashMap<Direction, bool> = HashMap::new();
         let twice_delta = FixedPoint::DELTA * 2;
@@ -317,6 +334,7 @@ impl AStarModel {
                 end_position,
                 self.trace_width,
                 self.trace_clearance,
+                layer,
             );
             collides_at_direction.insert(direction, collides);
         }
@@ -449,7 +467,11 @@ impl AStarModel {
         result
     }
     /// 判断当前点是否与目标点对齐，返回对齐的方向
-    fn is_aligned_with_end(&self, position: FixedVec2) -> Option<Direction> {
+    fn is_aligned_with_end(&self, position: FixedVec2, layer: usize) -> Option<Direction> {
+        let end_layers = self.end_layers.iter(self.num_layers).collect::<HashSet<_>>();
+        if !end_layers.contains(&layer) {
+            return None; // not aligned with end layer
+        }
         assert_ne!(
             position, self.end,
             "调用该函数前应确保已经处理与end重合的情况"
@@ -573,17 +595,23 @@ impl AStarModel {
     }
 
     /// 获取与end对齐的交点，还是给定方向和线段长度，判断是否有交叉
+    /// allow for the node to be in a different layer from end, but will return none in this case
     fn get_intersection_with_end_alignments(
         &self,
         start_pos: FixedVec2,
         end_pos: FixedVec2,
+        layer: usize,
     ) -> Option<FixedVec2> {
+        let end_layers = self.end_layers.iter(self.num_layers).collect::<HashSet<_>>();
+        if !end_layers.contains(&layer) {
+            return None; // not aligned with end layer
+        }
         assert_ne!(
             start_pos, self.end,
             "调用该函数前应确保已经处理与end重合的情况"
         );
         assert!(
-            self.is_aligned_with_end(start_pos).is_none(),
+            self.is_aligned_with_end(start_pos, layer).is_none(),
             "调用该函数前应确保当前点不与end对齐"
         );
         assert!(start_pos.is_sum_even());
@@ -626,6 +654,7 @@ impl AStarModel {
         &self,
         start_position: FixedVec2,
         end_position: FixedVec2,
+        layer: usize,
     ) -> Option<FixedVec2> {
         // println!("binary_approach_to_obstacles");
         let direction = Direction::from_points(start_position, end_position).unwrap();
@@ -643,6 +672,7 @@ impl AStarModel {
                 temp_end,
                 self.trace_width,
                 self.trace_clearance,
+                layer,
             ) {
                 upper_bound = mid_length; // collision found, search in the lower half
             } else {
@@ -798,7 +828,7 @@ impl AStarModel {
             );
             let color: [f32; 3] = [1.0 - alpha, alpha, 0.0]; // red to green gradient
             let renderables =
-                astar_node.to_renderables(self.trace_width, self.trace_clearance, color);
+                astar_node.to_renderables(self.trace_width, self.trace_clearance, self.via_diameter, color);
             render_model.trace_shape_renderables.extend(renderables);
         }
         // render the start and end nodes
@@ -823,38 +853,33 @@ impl AStarModel {
     }
 
     pub fn run(&self, pcb_render_model: Arc<Mutex<PcbRenderModel>>) -> Result<AStarResult, String> {
-        let is_start_difference_even = (self.start.x - self.start.y).to_bits() % 2 == 0;
-        assert!(
-            is_start_difference_even,
-            "Start position should have an even difference between x and y, x: {}, y: {}",
-            self.start.x, self.start.y
-        );
-        let is_end_difference_even = (self.end.x - self.end.y).to_bits() % 2 == 0;
-        assert!(
-            is_end_difference_even,
-            "End position should have an even difference between x and y, x: {}, y: {}",
-            self.end.x, self.end.y
-        );
-        let start_estimated_cost =
-            Self::octile_distance(&self.start, &self.end) * ESTIMATE_COEFFICIENT;
-
-        let start_node = AstarNode {
-            position: self.start,
-            direction: None, // no direction for the start node
-            actual_cost: 0.0,
-            actual_length: 0.0, // no length for the start node
-            estimated_cost: start_estimated_cost,
-            total_cost: start_estimated_cost,
-            prev_node: None, // no previous node for the start node
-        };
+        assert!(self.start.is_sum_even());
+        assert!(self.end.is_sum_even());
+        assert!(!self.start.is_x_odd_y_odd());
+        assert!(!self.end.is_x_odd_y_odd());
 
         // frontier is a min heap
         let mut frontier: BinaryHeap<BinaryHeapItem<Reverse<NotNan<f64>>, Rc<AstarNode>>> =
             BinaryHeap::new();
-        frontier.push(BinaryHeapItem {
-            key: Reverse(NotNan::new(start_node.total_cost).unwrap()), // use Reverse to make it a min heap
-            value: Rc::new(start_node),
-        });
+
+        let start_estimated_cost =
+            Self::octile_distance(&self.start, &self.end) * ESTIMATE_COEFFICIENT;
+        for layer in self.start_layers.iter(self.num_layers){
+            let start_node = AstarNode {
+                position: self.start,
+                layer,
+                direction: AStarNodeDirection::None, // no direction for the start node
+                actual_cost: 0.0,
+                actual_length: 0.0, // no length for the start node
+                estimated_cost: start_estimated_cost,
+                total_cost: start_estimated_cost,
+                prev_node: None, // no previous node for the start node
+            };
+            frontier.push(BinaryHeapItem {
+                key: Reverse(NotNan::new(start_node.total_cost).unwrap()), // use Reverse to make it a min heap
+                value: Rc::new(start_node),
+            });
+        }
         let mut visited: HashSet<AstarNodeKey> = HashSet::new();
         if DISPLAY_ASTAR {
             self.display_and_block(pcb_render_model.clone(), &frontier); // display the initial state of the frontier
@@ -870,11 +895,11 @@ impl AStarModel {
                     self.display_and_block(pcb_render_model.clone(), &frontier); // display the initial state of the frontier
                 }
                 // Reached the end node, construct the trace path
-                let trace_path = current_node.to_trace_path(self.trace_width, self.trace_clearance);
+                let trace_path = current_node.to_trace_path(self.trace_width, self.trace_clearance, self.via_diameter);
                 let new_trace_path = optimize_path(
                     &trace_path,
-                    &|start, end, width, clearance| {
-                        self.check_collision(start, end, width, clearance)
+                    &|start, end, width, clearance, layer| {
+                        self.check_collision(start, end, width, clearance, layer)
                     },
                     self.trace_width,
                     self.trace_clearance,
@@ -888,6 +913,7 @@ impl AStarModel {
             // move to the visited set
             let current_key = AstarNodeKey {
                 position: current_node.position,
+                layer: current_node.layer,
             };
             if visited.contains(&current_key) {
                 continue; // already visited this node
@@ -902,7 +928,8 @@ impl AStarModel {
 
             // new:
             // hoist the closure out of the directions loop for the aligned_with_end condition
-            let mut try_push_node_to_frontier = |direction: Direction, end_position: FixedVec2| {
+            let mut try_push_node_to_frontier = |direction: AStarNodeDirection, end_position: FixedVec2, end_layer: usize| {
+                assert!(!matches!(direction, AStarNodeDirection::None), "Direction should not be None");
                 assert!(
                     !end_position.is_x_odd_y_odd()
                         || !self.directions_to_grid_points(end_position).is_empty(),
@@ -918,6 +945,7 @@ impl AStarModel {
 
                 let astar_node_key = AstarNodeKey {
                     position: end_position,
+                    layer: end_layer,
                 };
                 // check if the new position is already visited
                 if visited.contains(&astar_node_key) {
@@ -932,7 +960,8 @@ impl AStarModel {
                 let total_cost = actual_cost + estimated_cost;
                 let new_node = AstarNode {
                     position: end_position,
-                    direction: Some(direction),
+                    layer: end_layer,
+                    direction,
                     actual_cost,
                     actual_length,
                     estimated_cost,
@@ -957,7 +986,8 @@ impl AStarModel {
             let mut current_node_handled = false;
             let mut condition_count = 0;
 
-            let end_direction = self.is_aligned_with_end(current_node.position);
+            // attempt a planar movement to reach the end
+            let end_direction = self.is_aligned_with_end(current_node.position, current_node.layer);
             if let Some(end_direction) = end_direction {
                 assert_ne!(current_node.position, self.end, "assert 3");
                 if !self.check_collision(
@@ -965,64 +995,48 @@ impl AStarModel {
                     self.end,
                     self.trace_width,
                     self.trace_clearance,
+                    current_node.layer,
                 ) {
                     // println!(
                     //     "is_aligned_with_end: ({}, {}) ({}, {})",
                     //     current_node.position.x, current_node.position.y, self.end.x, self.end.y
                     // );
                     condition_count = condition_count + 1;
-                    try_push_node_to_frontier(end_direction, self.end);
+                    try_push_node_to_frontier(AStarNodeDirection::Planar(end_direction), self.end, current_node.layer);
                 }
             }
 
             // process grid points or one-step-to-grid-points
+            // this is also planar
             let directions = self.directions_to_grid_points(current_node.position);
             assert!(
                 directions.len() != 8 || self.is_grid_point(&current_node.position),
                 "There should not be 8 directions to grid points if the current position is not a grid point"
             );
-            for (direction, end_position) in &directions {
+            for (direction, end_position) in directions {
                 current_node_handled = true;
-                assert_ne!(current_node.position, *end_position, "assert 5");
+                assert_ne!(current_node.position, end_position, "assert 5");
 
                 let end_position =
-                    match self.clamp_by_collision(current_node.position, *end_position) {
+                    match self.clamp_by_collision(current_node.position, end_position, current_node.layer) {
                         Some(pos) => pos,
                         None => continue, // if clamping fails, skip this direction
                     };
                 condition_count = condition_count + 1;
-                try_push_node_to_frontier(*direction, end_position);
-                // let max_length = FixedPoint::max(
-                //     (current_node.position.x - end_position.x).abs(),
-                //     (current_node.position.y - end_position.y).abs(),
-                // );
-                // if self.is_aligned_with_end(&current_node.position).is_none() {
-                //     let temp_end = self.get_intersection_with_end_alignments(
-                //         &current_node.position,
-                //         direction,
-                //         max_length,
-                //     );
-                //     if !temp_end.is_none() {
-                //         // println!(
-                //         //     "get_intersection_with_end_alignments: {}, {}",
-                //         //     temp_end.unwrap().x,
-                //         //     temp_end.unwrap().y
-                //         // );
-                //         condition_count = condition_count + 1;
-                //         try_push_node_to_frontier(direction, temp_end.unwrap());
-                //     }
-                // }
-                if let None = self.is_aligned_with_end(current_node.position) {
+                try_push_node_to_frontier(AStarNodeDirection::Planar(direction), end_position, current_node.layer);
+                if let None = self.is_aligned_with_end(current_node.position, current_node.layer) {
                     if let Some(intersection) = self
-                        .get_intersection_with_end_alignments(current_node.position, end_position)
+                        .get_intersection_with_end_alignments(current_node.position, end_position, current_node.layer)
                     {
                         condition_count = condition_count + 1;
-                        try_push_node_to_frontier(*direction, intersection);
+                        try_push_node_to_frontier(AStarNodeDirection::Planar(direction), intersection, current_node.layer);
                     }
                 }
             }
 
-            let radial_directions = self.radial_directions_wrt_obstacles(&current_node.position);
+            // process radial directions with respect to obstacles
+            // this is also planar
+            let radial_directions = self.radial_directions_wrt_obstacles(&current_node.position, current_node.layer);
             if !radial_directions.is_empty() {
                 current_node_handled = true;
             }
@@ -1037,38 +1051,18 @@ impl AStarModel {
                 assert_ne!(current_node.position, end_position, "assert 6");
 
                 let end_position =
-                    match self.clamp_by_collision(current_node.position, end_position) {
+                    match self.clamp_by_collision(current_node.position, end_position, current_node.layer) {
                         Some(pos) => pos,
                         None => continue, // if clamping fails, skip this direction
                     };
                 condition_count = condition_count + 1;
-                try_push_node_to_frontier(direction, end_position);
-                // let max_length = FixedPoint::max(
-                //     (current_node.position.x - end_position.x).abs(),
-                //     (current_node.position.y - end_position.y).abs(),
-                // );
-                // if self.is_aligned_with_end(&current_node.position).is_none() {
-                //     let temp_end = self.get_intersection_with_end_alignments(
-                //         &current_node.position,
-                //         direction,
-                //         max_length,
-                //     );
-                //     if !temp_end.is_none() {
-                //         // println!(
-                //         //     "radial_directions_wrt_obstacles: {}, {}",
-                //         //     temp_end.unwrap().x,
-                //         //     temp_end.unwrap().y
-                //         // );
-                //         condition_count = condition_count + 1;
-                //         try_push_node_to_frontier(direction, temp_end.unwrap());
-                //     }
-                // }
-                if let None = self.is_aligned_with_end(current_node.position) {
+                try_push_node_to_frontier(AStarNodeDirection::Planar(direction), end_position, current_node.layer);
+                if let None = self.is_aligned_with_end(current_node.position, current_node.layer) {
                     if let Some(intersection) = self
-                        .get_intersection_with_end_alignments(current_node.position, end_position)
+                        .get_intersection_with_end_alignments(current_node.position, end_position, current_node.layer)
                     {
                         condition_count = condition_count + 1;
-                        try_push_node_to_frontier(direction, intersection);
+                        try_push_node_to_frontier(AStarNodeDirection::Planar(direction), intersection, current_node.layer);
                     }
                 }
             }
@@ -1086,10 +1080,11 @@ impl AStarModel {
                         end_position,
                         self.trace_width,
                         self.trace_clearance,
+                        current_node.layer,
                     ) {
                         // println!("4: {}, {}", end_position.x, end_position.y);
                         condition_count = condition_count + 1;
-                        try_push_node_to_frontier(direction, end_position);
+                        try_push_node_to_frontier(AStarNodeDirection::Planar(direction), end_position, current_node.layer);
                         found_point = true;
                         break;
                     }
@@ -1101,17 +1096,20 @@ impl AStarModel {
                     //     Direction::Up
                     // };
                     let direction = match current_node.direction {
-                        Some(direction) => direction,
-                        None => Direction::Up, // default direction if not set
+                        // Some(direction) => direction,
+                        // None => Direction::Up, // default direction if not set
+                        AStarNodeDirection::None => Direction::Up, // default direction if not set
+                        AStarNodeDirection::Planar(direction) => direction,
+                        AStarNodeDirection::Vertical { .. } => Direction::Up,
                     };
                     let end_position =
                         self.to_nearest_one_step_point(&current_node.position, direction);
                     if let Some(end_position) =
-                        self.clamp_by_collision(current_node.position, end_position)
+                        self.clamp_by_collision(current_node.position, end_position, current_node.layer)
                     {
                         // println!("4.1: {}, {}", temp_end.unwrap().x, temp_end.unwrap().y);
                         condition_count = condition_count + 1;
-                        try_push_node_to_frontier(direction, end_position);
+                        try_push_node_to_frontier(AStarNodeDirection::Planar(direction), end_position, current_node.layer);
                     } else {
                         // remove the tried direction
                         let directions = Direction::all_directions()
@@ -1124,11 +1122,11 @@ impl AStarModel {
                             let end_position =
                                 self.to_nearest_one_step_point(&current_node.position, direction);
                             if let Some(end_position) =
-                                self.clamp_by_collision(current_node.position, end_position)
+                                self.clamp_by_collision(current_node.position, end_position, current_node.layer)
                             {
                                 // println!("4.2: {}, {}", end_position.x, end_position.y);
                                 condition_count = condition_count + 1;
-                                try_push_node_to_frontier(direction, end_position);
+                                try_push_node_to_frontier(AStarNodeDirection::Planar(direction), end_position, current_node.layer);
                                 found_point = true;
                                 break; // only try one direction
                             }
@@ -1160,11 +1158,13 @@ impl AStarModel {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct AstarNodeKey {
     pub position: FixedVec2,
+    pub layer: usize,
 }
 
 pub struct AstarNode {
     pub position: FixedVec2,
-    pub direction: Option<Direction>, // the direction from the previous node to this node
+    pub layer: usize,
+    pub direction: AStarNodeDirection, // the direction from the previous node to this node
     pub actual_cost: f64,             // the actual cost to reach this node from the start node
     pub actual_length: f64,
     pub estimated_cost: f64, // the estimated cost to reach the end node from this node
@@ -1173,41 +1173,99 @@ pub struct AstarNode {
 }
 
 impl AstarNode {
-    pub fn to_trace_path(&self, width: f32, clearance: f32) -> TracePath {
-        let mut anchors = vec![self.position];
-        let mut directions = vec![self.direction.as_ref().unwrap().clone()]; // start with the direction of the first segment
-        let mut current_node = self.prev_node.clone();
-        while let Some(node) = current_node {
-            anchors.push(node.position);
-            if let Some(direction) = &node.direction {
-                directions.push(direction.clone());
+    fn is_direction_and_displacement_invariant(
+        current_node: Rc<AstarNode>,
+        prev_node: Option<Rc<AstarNode>>,
+    )->bool{
+        match current_node.direction{
+            AStarNodeDirection::None =>{
+                prev_node.is_none() // no previous node
+            },
+            AStarNodeDirection::Planar(direction) => {
+                let (prev_position, prev_layer) = match prev_node{
+                    Some(node)=> (node.position, node.layer),
+                    None => return false, // if no previous node, return false
+                };
+                let calculated_direction = Direction::from_points(prev_position, current_node.position);
+                let calculated_direction = match calculated_direction{
+                    Ok(dir) => dir,
+                    Err(_) => return false, // if the direction cannot be calculated, return false
+                };
+                calculated_direction == direction && current_node.layer == prev_layer
+            },
+            AStarNodeDirection::Vertical { from_layer } =>{
+                let (prev_position, prev_layer) = match prev_node{
+                    Some(node)=> (node.position, node.layer),
+                    None => return false, // if no previous node, return false
+                };
+                prev_layer == from_layer && current_node.layer != from_layer && current_node.position == prev_position // the current layer should not be the same as the from_layer
             }
+        }
+    }
+    pub fn to_trace_path(self: Rc<Self>, width: f32, clearance: f32, via_diameter: f32) -> TracePath {
+        let mut current_node: Option<Rc<AstarNode>> = Some(self.clone());
+        let mut next_node: Option<Rc<AstarNode>> = None;
+        let mut anchors: Vec<TraceAnchor> = Vec::new(); // initializes with the end position
+        let mut vias: Vec<Via> = Vec::new(); // initializes with the end position
+        let mut pending_trace_anchor: Option<TraceAnchor> = None; // position, start, end
+        while let Some(node) = &current_node {
+            if let Some(next_node) = next_node{
+                assert!(Self::is_direction_and_displacement_invariant(next_node.clone(), Some(node.clone())));
+            }                        
+            pending_trace_anchor = if let Some(pending_anchor) = pending_trace_anchor {
+                if node.position == pending_anchor.position {
+                    Some(TraceAnchor {
+                        position: node.position,
+                        start_layer: node.layer,
+                        end_layer: pending_anchor.end_layer,
+                    })
+                }else{
+                    anchors.push(pending_anchor);
+                    Some(TraceAnchor {
+                        position: node.position,
+                        start_layer: node.layer,
+                        end_layer: node.layer,
+                    })
+                }
+            }else{
+                Some(TraceAnchor {
+                    position: node.position,
+                    start_layer: node.layer,
+                    end_layer: node.layer,
+                })
+            };
+            next_node = current_node.clone();
             current_node = node.prev_node.clone();
         }
-        assert!(
-            anchors.len() == directions.len() + 1,
-            "The number of anchors should be one more than the number of directions"
-        );
+        anchors.push(pending_trace_anchor.unwrap()); // push the last anchor
+        let next_node = next_node.unwrap();
+        assert!(Self::is_direction_and_displacement_invariant(next_node, None));
         anchors.reverse(); // reverse the anchors to get the correct order
-        directions.reverse(); // reverse the directions to get the correct order
         let mut segments: Vec<TraceSegment> = Vec::new();
-        for i in 0..directions.len() {
-            let start = anchors[i];
-            let end = anchors[i + 1];
-            let direction = directions[i].clone();
-            assert_ne!(start, end, "Start and end positions should not be the same");
+        for i in 0..anchors.len() - 1 {
+            let start_anchor = &anchors[i];
+            let end_anchor = &anchors[i + 1];
+            assert!(start_anchor.end_layer == end_anchor.start_layer, "The end layer of the start anchor should match the start layer of the end anchor");
+            assert_ne!(start_anchor.position, end_anchor.position, "Start and end positions should not be the same");
             let segment = TraceSegment {
-                start,
-                end,
+                start: start_anchor.position,
+                end: end_anchor.position,
+                layer: start_anchor.end_layer,
                 width,
                 clearance,
             };
-            assert_eq!(
-                segment.get_direction(),
-                direction,
-                "The direction of the segment should match the direction of the node"
-            );
             segments.push(segment);
+            if start_anchor.start_layer != start_anchor.end_layer {
+                // if the start and end layers are different, we need to add a via
+                let via = Via {
+                    position: start_anchor.position,
+                    clearance,
+                    diameter: via_diameter,
+                    min_layer: usize::min(start_anchor.start_layer, start_anchor.end_layer),
+                    max_layer: usize::max(start_anchor.start_layer, start_anchor.end_layer),
+                };
+                vias.push(via);
+            }
         }
         let anchors = TraceAnchors(anchors);
         assert!(
@@ -1217,52 +1275,84 @@ impl AstarNode {
         TracePath {
             anchors,
             segments,
-            length: self.actual_length,
+            vias,
+            total_length: self.actual_length,
         }
     }
     pub fn to_renderables(
         &self,
         width: f32,
         clearance: f32,
+        via_diameter: f32,
         color: [f32; 3],
     ) -> Vec<RenderableBatch> {
         // This function is used to convert the AstarNode to a TraceSegment
         // It assumes that the node has a direction and a position
         let opaque_color = [color[0], color[1], color[2], 1.0]; // make the color opaque
         let transparent_color = [color[0], color[1], color[2], 0.5]; // make the color transparent
-        if let Some(direction) = &self.direction {
-            // If the node has a direction, we can create a TraceSegment
-            let trace_segment = TraceSegment {
-                start: self.prev_node.as_ref().unwrap().position,
-                end: self.position,
-                width,
-                clearance,
-            };
-            let renderables = trace_segment.to_renderables(opaque_color);
-            let clearance_renderables = trace_segment.to_clearance_renderables(transparent_color);
-            vec![
-                RenderableBatch(renderables),
-                RenderableBatch(clearance_renderables),
-            ]
-        } else {
-            let shape_renderable = ShapeRenderable {
-                shape: PrimShape::Circle(CircleShape {
-                    position: self.position.to_float(),
-                    diameter: width,
-                }),
-                color: opaque_color,
-            };
-            let shape_clearance_renderable = ShapeRenderable {
-                shape: PrimShape::Circle(CircleShape {
-                    position: self.position.to_float(),
-                    diameter: width + clearance * 2.0,
-                }),
-                color: transparent_color,
-            };
-            vec![RenderableBatch(vec![
-                shape_renderable,
-                shape_clearance_renderable,
-            ])]
+        // if let Some(direction) = &self.direction {
+ 
+        // } else {
+        
+        // }
+        match &self.direction{
+            AStarNodeDirection::None =>{
+                let shape_renderable = ShapeRenderable {
+                    shape: PrimShape::Circle(CircleShape {
+                        position: self.position.to_float(),
+                        diameter: width,
+                    }),
+                    color: opaque_color,
+                };
+                let shape_clearance_renderable = ShapeRenderable {
+                    shape: PrimShape::Circle(CircleShape {
+                        position: self.position.to_float(),
+                        diameter: width + clearance * 2.0,
+                    }),
+                    color: transparent_color,
+                };
+                vec![RenderableBatch(vec![
+                    shape_renderable,
+                    shape_clearance_renderable,
+                ])]
+            },
+            AStarNodeDirection::Planar(direction)=>{
+                // If the node has a direction, we can create a TraceSegment
+                let trace_segment = TraceSegment {
+                    start: self.prev_node.as_ref().unwrap().position,
+                    end: self.position,
+                    width,
+                    clearance,
+                    layer: self.layer, // don't care
+                };
+                let renderables = trace_segment.to_renderables(opaque_color);
+                let clearance_renderables = trace_segment.to_clearance_renderables(transparent_color);
+                vec![
+                    RenderableBatch(renderables),
+                    RenderableBatch(clearance_renderables),
+                ]
+            },
+            AStarNodeDirection::Vertical { from_layer } => {
+                // draw a via
+                let shape_renderable = ShapeRenderable {
+                    shape: PrimShape::Circle(CircleShape {
+                        position: self.position.to_float(),
+                        diameter: via_diameter,
+                    }),
+                    color: opaque_color,
+                };
+                let shape_clearance_renderable = ShapeRenderable {
+                    shape: PrimShape::Circle(CircleShape {
+                        position: self.position.to_float(),
+                        diameter: via_diameter + clearance * 2.0,
+                    }),
+                    color: transparent_color,
+                };
+                vec![RenderableBatch(vec![
+                    shape_renderable,
+                    shape_clearance_renderable,
+                ])]
+            }
         }
     }
 }

@@ -1,10 +1,10 @@
 use crate::dsn_struct::{
-    Boundary, Component, ComponentInst, DsnStruct, Netclass, Network, PadStack, Pin, Pin2, Placement, Shape
+    Boundary, Component, ComponentInst, DsnStruct, Netclass, Network, PadStack, Pin, Pin2, Placement, PlacementLayer, Shape
 };
 use crate::parse_to_display_format::{DisplayFormat, DisplayNetInfo, ExtraInfo};
 
 use cgmath::{Deg, Matrix2, Rad, Vector2};
-use shared::pad::{Pad, PadName, PadShape};
+use shared::pad::{Pad, PadLayer, PadName, PadShape};
 use shared::pcb_problem::{NetClassName, NetName};
 use shared::prim_shape::{LineForCollision, PolygonForCollision};
 use shared::vec2::{FixedVec2, FloatVec2};
@@ -91,6 +91,7 @@ pub struct TransformedPad {
     pub position: FloatVec2, // 最终PCB坐标系下的位置
     pub shape: PadShape,
     pub rotation: cgmath::Deg<f32>, // 最终旋转角度（度）
+    pub pad_layer: PadLayer, // Pad所在的层
 }
 
 fn transform_point(point: FloatVec2, rotation_deg: f32, translation: FloatVec2) -> FloatVec2 {
@@ -298,7 +299,14 @@ fn build_pad_map_and_scale(dsn: &DsnStruct, scale_down_factor: f32) -> Result<Ha
 
                 // 创建唯一标识符
                 let pad_key = format!("{}-{}", instance.reference, pin_number);
-
+                let pad_layer = if pad_stack.through_hole {
+                    PadLayer::All
+                } else {
+                    match instance.placement_layer {
+                        PlacementLayer::Front => PadLayer::Front,
+                        PlacementLayer::Back => PadLayer::Back,
+                    }
+                };
                 pad_map.insert(
                     pad_key,
                     TransformedPad {
@@ -307,6 +315,7 @@ fn build_pad_map_and_scale(dsn: &DsnStruct, scale_down_factor: f32) -> Result<Ha
                         position: position / scale_down_factor,
                         shape,
                         rotation: Deg(instance.rotation as f32),
+                        pad_layer,
                     },
                 );
             }
@@ -317,7 +326,7 @@ fn build_pad_map_and_scale(dsn: &DsnStruct, scale_down_factor: f32) -> Result<Ha
 }
 
 fn pins_to_pads_and_scale(pins: &Vec<Pin2>, dsn: &DsnStruct, scale_down_factor: f32) -> Result<Vec<Pad>, String> {
-    let mut pad_map = build_pad_map_and_scale(&dsn, scale_down_factor)?;
+    let pad_map = build_pad_map_and_scale(&dsn, scale_down_factor)?;
     let mut pads: Vec<Pad> = Vec::new();
     let mut net_clearance_map = HashMap::new();
     for (_, netclass) in &dsn.network.netclasses {
@@ -357,6 +366,7 @@ fn pins_to_pads_and_scale(pins: &Vec<Pin2>, dsn: &DsnStruct, scale_down_factor: 
             shape: transformed_pad.shape.clone(),
             rotation: transformed_pad.rotation,
             clearance,
+            pad_layer: transformed_pad.pad_layer,
         });
     }
 
@@ -433,6 +443,10 @@ pub fn dsn_to_display(dsn: &DsnStruct) -> Result<DisplayFormat, String> {
         _=>panic!("Unsupported unit: {}", unit),
     };
     let (width, height, center) = calculate_boundary_and_scale(&dsn.structure.boundary, scale_down_factor)?;
+    let num_layers = dsn.structure.layers.len();
+    if num_layers == 0 || num_layers % 2 == 1{
+        return Err(format!("Invalid number of layers: {}, must be even and greater than 0", num_layers));
+    }
     let obstacle_lines: Vec<LineForCollision> = Vec::new();
     let obstacle_polygons: Vec<PolygonForCollision> = Vec::new();
     let net_info: HashMap<NetName, DisplayNetInfo> = parse_net_info_and_scale(&dsn, scale_down_factor)?;
@@ -441,6 +455,7 @@ pub fn dsn_to_display(dsn: &DsnStruct) -> Result<DisplayFormat, String> {
         width,
         height,
         center,
+        num_layers,
         obstacle_lines,
         obstacle_polygons,
         nets: net_info,

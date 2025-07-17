@@ -20,11 +20,16 @@ pub struct Structure{
     pub layers: Vec<Layer>,
     pub boundary: Boundary,
 }
+pub enum PlacementLayer{
+    Front,
+    Back,
+}
 
 pub struct ComponentInst{
     pub reference: String,
     pub position: FloatVec2,
     pub rotation: f32,
+    pub placement_layer: PlacementLayer, // Layer where the component is placed
 }
 pub struct Component{
     pub name: String,
