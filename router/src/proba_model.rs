@@ -425,7 +425,8 @@ impl ProbaModel {
                         trace_width: connection.sink_trace_width,            
                         trace_clearance: connection.sink_trace_clearance,    
                         via_diameter: net_info.via_diameter,
-                        border_cache: RefCell::new(None), // Cache for border points, initialized to None
+                        border_colliders_cache: RefCell::new(None), // Cache for border points, initialized to None
+                        border_shapes_cache: RefCell::new(None), // Cache for border shapes, initialized to None
                     };                    
                     // run A* algorithm to find a path
                     let astar_result = astar_model.run(pcb_render_model.clone());

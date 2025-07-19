@@ -8,3 +8,4 @@ pub mod binary_heap_item;
 pub mod trace_path;
 pub mod color_float3;
 pub mod distinct_color_generator;
+pub mod collider;

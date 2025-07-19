@@ -1,7 +1,7 @@
 use std::{sync::{Arc, Mutex}, time::Instant};
 
 use cgmath::{Euler, Quaternion};
-use shared::{pcb_render_model::PcbRenderModel, prim_shape::{CircleShape, PrimShape, RectangleShape}};
+use shared::{pcb_render_model::PcbRenderModel, prim_shape::{CircleShape, Line, PrimShape, RectangleShape}};
 
 use crate::{
     orthographic_camera::OrthographicCamera, render_context::RenderContext, shape_instance::ShapeInstance, shape_mesh::ShapeMesh, transparent_pipeline::TransparentShapeBatch
@@ -128,6 +128,7 @@ pub fn pcb_render_model_to_transparent_shape_submissions(
     for trace in &pcb_render_model.trace_shape_renderables {
         let mut circle_instances: Vec<ShapeInstance> = Vec::new();
         let mut rect_instances: Vec<ShapeInstance> = Vec::new();
+        let mut line_instances: Vec<ShapeInstance> = Vec::new();
         for renderable in &trace.0{
             let color = renderable.color;
             match &renderable.shape{
@@ -159,6 +160,26 @@ pub fn pcb_render_model_to_transparent_shape_submissions(
                     };
                     rect_instances.push(rect_instance);
                 },
+                // PrimShape::Line(line) =>{
+                //     let Line { start, end } = line;
+                //     // the original vertices of the line are (-1, 0, 0) and (1, 0, 0)
+                //     // we need to calculate the position, rotation and scale of the line instance
+                //     // position is the midpoint of the line
+                //     let rotation_rad = (end.y - start.y).atan2(end.x - start.x);
+                //     let scale_x_and_y = (end.x - start.x).hypot(end.y - start.y) / 2.0;
+                //     let line_instance = ShapeInstance {
+                //         position: [(start.x + end.x) / 2.0, (start.y + end.y) / 2.0, 0.0].into(),
+                //         rotation: Quaternion::from(Euler::new(
+                //             cgmath::Rad(0.0),
+                //             cgmath::Rad(0.0),
+                //             cgmath::Rad(rotation_rad),                             
+                //         )),
+                //         scale: cgmath::Vector3::new(scale_x_and_y, scale_x_and_y, 1.0),
+                //         color,
+                //     };
+                //     line_instances.push(line_instance);
+                // }
+                PrimShape::Line(_) => panic!("Line shapes are not supported in trace renderables"),
             }
         }      
         let mut batch_contents = Vec::new();
@@ -207,6 +228,9 @@ pub fn pcb_render_model_to_transparent_shape_submissions(
                 let rect_batch = TransparentShapeBatch(vec![(rect_mesh.clone(), vec![rect_instance])]);
                 submissions.push(rect_batch);
             },
+            PrimShape::Line(_) => {
+                panic!("Line shapes are not supported in pad renderables");
+            }
         }
     }
     submissions

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use shared::{pad::{Pad, PadName}, pcb_problem::{NetClassName, NetName}, prim_shape::{LineForCollision, PolygonForCollision}, vec2::FloatVec2};
+use shared::{collider::PolygonCollider, pad::{Pad, PadName}, pcb_problem::{NetClassName, NetName}, prim_shape::Line, vec2::FloatVec2};
 
 pub struct DisplayNetInfo{
     pub net_name: NetName,
@@ -18,8 +18,8 @@ pub struct DisplayFormat{
     pub height: f32, // in specctra dsn units
     pub center: FloatVec2, // Center of the PCB, in specctra dsn units
     pub num_layers: usize, // 0: front, num_layers - 1: back
-    pub obstacle_lines: Vec<LineForCollision>, // Lines that represent obstacles in the PCB
-    pub obstacle_polygons: Vec<PolygonForCollision>, // Polygons that represent obstacles in the PCB
+    pub obstacle_lines: Vec<Line>, // Lines that represent obstacles in the PCB
+    pub obstacle_polygons: Vec<PolygonCollider>, // Polygons that represent obstacles in the PCB
     pub nets: HashMap<NetName, DisplayNetInfo>, // NetID to DisplayNetInfo
     pub scale_down_factor: f32, // Scale down factor to convert specctra dsn units to float units
 }

@@ -4,9 +4,10 @@ use crate::dsn_struct::{
 use crate::parse_to_display_format::{DisplayFormat, DisplayNetInfo, ExtraInfo};
 
 use cgmath::{Deg, Matrix2, Rad, Vector2};
+use shared::collider::PolygonCollider;
 use shared::pad::{Pad, PadLayer, PadName, PadShape};
 use shared::pcb_problem::{NetClassName, NetName};
-use shared::prim_shape::{LineForCollision, PolygonForCollision};
+use shared::prim_shape::{Line};
 use shared::vec2::{FixedVec2, FloatVec2};
 use core::{f32, net};
 use std::collections::HashMap;
@@ -447,8 +448,8 @@ pub fn dsn_to_display(dsn: &DsnStruct) -> Result<DisplayFormat, String> {
     if num_layers == 0 || num_layers % 2 == 1{
         return Err(format!("Invalid number of layers: {}, must be even and greater than 0", num_layers));
     }
-    let obstacle_lines: Vec<LineForCollision> = Vec::new();
-    let obstacle_polygons: Vec<PolygonForCollision> = Vec::new();
+    let obstacle_lines: Vec<Line> = Vec::new();
+    let obstacle_polygons: Vec<PolygonCollider> = Vec::new();
     let net_info: HashMap<NetName, DisplayNetInfo> = parse_net_info_and_scale(&dsn, scale_down_factor)?;
 
     let display_format = DisplayFormat {

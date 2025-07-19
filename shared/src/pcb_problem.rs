@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    color_float3::ColorFloat3, distinct_color_generator::DistinctColorGenerator, pad::Pad, prim_shape::{LineForCollision, PolygonForCollision}, trace_path::TracePath, vec2::FloatVec2
+    collider::{BorderCollider, PolygonCollider}, color_float3::ColorFloat3, distinct_color_generator::DistinctColorGenerator, pad::Pad, prim_shape::Line, trace_path::TracePath, vec2::FloatVec2
 };
 
 // use shared::interface_types::{Color, ColorGrid};
@@ -51,8 +51,8 @@ pub struct PcbProblem {
     pub height: f32,
     pub center: FloatVec2,
     pub num_layers: usize, // 0: front, num_layers - 1: back
-    pub obstacle_lines: Vec<LineForCollision>, // Lines that represent obstacles in the PCB
-    pub obstacle_polygons: Vec<PolygonForCollision>, // Polygons that represent obstacles in the PCB
+    pub obstacle_borders: Vec<BorderCollider>, // Borders that represent obstacles in the PCB
+    pub obstacle_polygons: Vec<PolygonCollider>, // Polygons that represent obstacles in the PCB
     pub nets: HashMap<NetName, NetInfo>, // NetID to NetInfo
     pub connection_id_generator: Box<dyn Iterator<Item = ConnectionID> + Send + 'static>, // A generator for ConnectionID, starting from 0
     pub distinct_color_generator: Box<dyn Iterator<Item = ColorFloat3> + Send + 'static>, // A generator for distinct colors
@@ -78,7 +78,7 @@ impl PcbProblem {
             height,
             center,
             num_layers,
-            obstacle_lines: Vec::new(),
+            obstacle_borders: Vec::new(),
             scale_down_factor,
             obstacle_polygons: Vec::new(),
             nets: HashMap::new(),

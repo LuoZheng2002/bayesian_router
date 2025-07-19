@@ -1,0 +1,65 @@
+struct QuadtreeNode:
+    boundary: Rectangle       // Spatial boundary of the node
+    capacity: Integer         // Max objects before subdivision
+    objects: List<Object>     // Objects in this node
+    children: QuadtreeNode[4] // 4 child nodes (NW, NE, SW, SE)
+    subdivided: Boolean       // Whether the node has been split
+
+    function Insert(Object):
+        // Check if object fits in this node
+        if not boundary.Contains(Object):
+            return false
+
+        // If not subdivided and has space, add object
+        if not subdivided and objects.size < capacity:
+            objects.add(Object)
+            return true
+
+        // Otherwise, subdivide if needed
+        if not subdivided:
+            Subdivide()
+
+        // Insert into children
+        for child in children:
+            if child.Insert(Object):
+                return true
+
+        // If object couldn't be inserted into any child, keep here
+        objects.add(Object)
+        return true
+
+    function Subdivide():
+        // Split into 4 quadrants
+        x = boundary.x
+        y = boundary.y
+        w = boundary.width / 2
+        h = boundary.height / 2
+
+        children[0] = QuadtreeNode(Rectangle(x, y, w, h), capacity)       // NW
+        children[1] = QuadtreeNode(Rectangle(x + w, y, w, h), capacity)   // NE
+        children[2] = QuadtreeNode(Rectangle(x, y + h, w, h), capacity)   // SW
+        children[3] = QuadtreeNode(Rectangle(x + w, y + h, w, h), capacity) // SE
+
+        subdivided = true
+
+        // Re-insert existing objects into children
+        for obj in objects:
+            for child in children:
+                if child.Insert(obj):
+                    break
+        objects.clear()
+
+    function Query(Range, FoundObjects):
+        // Find objects that could collide with 'Range'
+        if not boundary.Intersects(Range):
+            return
+
+        // Check objects in this node
+        for obj in objects:
+            if Range.Intersects(obj):
+                FoundObjects.add(obj)
+
+        // Recursively check children
+        if subdivided:
+            for child in children:
+                child.Query(Range, FoundObjects)

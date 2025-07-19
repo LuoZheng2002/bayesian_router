@@ -5,3 +5,4 @@ pub mod pcb_problem_solve;
 // pub mod post_process;
 pub mod proba_model;
 pub mod test_pcb_problem;
+pub mod quad_tree;

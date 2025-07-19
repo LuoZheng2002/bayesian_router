@@ -1,8 +1,5 @@
 use crate::{
-    hyperparameters::HALF_PROBABILITY_RAW_SCORE,
-    pcb_render_model::{RenderableBatch, ShapeRenderable},
-    prim_shape::{CircleShape, PrimShape, RectangleShape},
-    vec2::{FixedPoint, FixedVec2, FloatVec2},
+    collider::Collider, hyperparameters::HALF_PROBABILITY_RAW_SCORE, pcb_render_model::{RenderableBatch, ShapeRenderable}, prim_shape::{CircleShape, PrimShape, RectangleShape}, vec2::{FixedPoint, FixedVec2, FloatVec2}
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Hash, Eq, PartialOrd, Ord)]
@@ -274,24 +271,38 @@ impl TraceSegment {
         });
         vec![clearance_start_circle, clearance_end_circle, clearance_rect]
     }
+    pub fn to_colliders(&self) -> Vec<Collider> {
+        let shapes = self.to_shapes();
+        shapes
+            .iter()
+            .map(Collider::from_prim_shape)
+            .collect()
+    }
+    pub fn to_clearance_colliders(&self) -> Vec<Collider> {
+        let clearance_shapes = self.to_clearance_shapes();
+        clearance_shapes
+            .iter()
+            .map(Collider::from_prim_shape)
+            .collect()
+    }
     pub fn collides_with(&self, other: &TraceSegment) -> bool {
         if self.layer != other.layer {
             return false; // No collision if they are on different layers
         }
-        let self_shapes = self.to_shapes();
-        let self_clearance_shapes = self.to_clearance_shapes();
-        let other_shapes = other.to_shapes();
-        let other_clearance_shapes = other.to_clearance_shapes();
-        for self_shape in self_shapes {
-            for other_clearance_shape in &other_clearance_shapes {
-                if self_shape.collides_with(other_clearance_shape) {
+        let self_colliders = self.to_colliders();
+        let self_clearance_colliders = self.to_clearance_colliders();
+        let other_colliders = other.to_colliders();
+        let other_clearance_colliders = other.to_clearance_colliders();
+        for self_collider in self_colliders {
+            for other_clearance_collider in &other_clearance_colliders {
+                if self_collider.collides_with(other_clearance_collider) {
                     return true;
                 }
             }
         }
-        for self_clearance_shape in self_clearance_shapes {
-            for other_shape in &other_shapes {
-                if self_clearance_shape.collides_with(other_shape) {
+        for self_clearance_collider in self_clearance_colliders {
+            for other_collider in &other_colliders {
+                if self_clearance_collider.collides_with(other_collider) {
                     return true;
                 }
             }

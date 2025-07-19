@@ -13,7 +13,7 @@ use crate::block_or_sleep::{block_or_sleep, block_thread};
 // use crate::post_process::optimize_path;
 
 use shared::{
-    binary_heap_item::BinaryHeapItem, hyperparameters::{ASTAR_STRIDE, DISPLAY_ASTAR, ESTIMATE_COEFFICIENT, MAX_TRIALS, VIA_COST}, pad::PadLayer, pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel}, prim_shape::{CircleShape, PrimShape, RectangleShape}, trace_path::{AStarNodeDirection, Direction, TraceAnchor, TraceAnchors, TracePath, TraceSegment, Via}, vec2::{FixedPoint, FixedVec2, FloatVec2}
+    binary_heap_item::BinaryHeapItem, collider::{BorderCollider, Collider}, hyperparameters::{ASTAR_STRIDE, DISPLAY_ASTAR, ESTIMATE_COEFFICIENT, MAX_TRIALS, VIA_COST}, pad::PadLayer, pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel}, prim_shape::{CircleShape, PrimShape, RectangleShape}, trace_path::{AStarNodeDirection, Direction, TraceAnchor, TraceAnchors, TracePath, TraceSegment, Via}, vec2::{FixedPoint, FixedVec2, FloatVec2}
 };
 
 pub struct AStarModel {
@@ -30,7 +30,8 @@ pub struct AStarModel {
     pub trace_width: f32,
     pub trace_clearance: f32,
     pub via_diameter: f32,
-    pub border_cache: RefCell<Option<Rc<Vec<PrimShape>>>>,
+    pub border_colliders_cache: RefCell<Option<Rc<Vec<Collider>>>>,
+    pub border_shapes_cache: RefCell<Option<Rc<Vec<PrimShape>>>>,
 }
 
 impl AStarModel {
@@ -46,67 +47,34 @@ impl AStarModel {
         }
     }
     
-    fn get_border_shapes(&self) -> Rc<Vec<PrimShape>> {
-        if let Some(border_shapes) = self.border_cache.borrow().as_ref() {
+    fn get_border_colliders(&self) -> Rc<Vec<Collider>> {
+        if let Some(border_shapes) = self.border_colliders_cache.borrow().as_ref() {
             return border_shapes.clone();
         }
-        let margin = 100.0; // margin around the border shapes
+        let border_colliders: Rc<Vec<Collider>> = todo!();
 
-        let top_rectangle = PrimShape::Rectangle(RectangleShape {
-            position: FloatVec2 {
-                x: 0.0,
-                y: self.height / 2.0 + margin / 2.0,
-            } + self.center,
-            width: self.width + 2.0 * margin,
-            height: margin,
-            rotation: cgmath::Deg(0.0),
-        });
-        let bottom_rectangle = PrimShape::Rectangle(RectangleShape {
-            position: FloatVec2 {
-                x: 0.0,
-                y: -self.height / 2.0 - margin / 2.0,
-            } + self.center,
-            width: self.width + 2.0 * margin,
-            height: margin,
-            rotation: cgmath::Deg(0.0),
-        });
-        let left_rectangle = PrimShape::Rectangle(RectangleShape {
-            position: FloatVec2 {
-                x: -self.width / 2.0 - margin / 2.0,
-                y: 0.0,
-            } + self.center,
-            width: margin,
-            height: self.height + 2.0 * margin,
-            rotation: cgmath::Deg(0.0),
-        });
-        let right_rectangle = PrimShape::Rectangle(RectangleShape {
-            position: FloatVec2 {
-                x: self.width / 2.0 + margin / 2.0,
-                y: 0.0,
-            } + self.center,
-            width: margin,
-            height: self.height + 2.0 * margin,
-            rotation: cgmath::Deg(0.0),
-        });
-        let border_shapes = Rc::new(vec![
-            top_rectangle,
-            bottom_rectangle,
-            left_rectangle,
-            right_rectangle,
-        ]);
-        *self.border_cache.borrow_mut() = Some(border_shapes.clone());
+        *self.border_colliders_cache.borrow_mut() = Some(border_colliders.clone());
+        border_colliders
+    }
+    fn get_border_shapes(&self) -> Rc<Vec<PrimShape>>{
+        if let Some(border_shapes) = self.border_shapes_cache.borrow().as_ref() {
+            return border_shapes.clone();
+        }
+        let border_shapes: Rc<Vec<PrimShape>> = todo!();
+
+        *self.border_shapes_cache.borrow_mut() = Some(border_shapes.clone());
         border_shapes
     }
 
-    fn collides_with_border<'a, I>(&self, shapes: I) -> bool
+    fn collides_with_border<'a, I>(&self, colliders: I) -> bool
     where
-        I: Iterator<Item = &'a PrimShape> + Clone,
+        I: Iterator<Item = &'a Collider> + Clone,
     {
         // the allowed region is between (-width/2, -height/2) and (width/2, height/2)
         // create four overlapping rectangles that encapsulate the allowed region
         // the margin is sufficiently large
-        let border_shapes = self.get_border_shapes();
-        Self::check_collision_between_two_sets(shapes, border_shapes.iter())
+        let border_colliders = self.get_border_colliders();
+        Self::check_collision_between_two_sets(colliders, border_colliders.iter())
     }
 
     pub fn clamp_by_collision(
@@ -121,45 +89,40 @@ impl AStarModel {
             diameter: self.trace_width + self.trace_clearance * 2.0,
         });
         let obstacle_shapes = self.obstacle_shapes.get(&layer).unwrap();
-        if Self::check_collision_between_two_sets(std::iter::once(&end_circle_clearance_shape), obstacle_shapes.iter())
-            ||self.check_collision_for_trace(start_pos, end_pos, self.trace_width, self.trace_clearance, layer) {
+        if self.check_collision_for_trace(start_pos, end_pos, self.trace_width, self.trace_clearance, layer) {
             self.binary_approach_to_obstacles(start_pos, end_pos, layer)
         } else {
             Some(end_pos)
         }
     }
     /// outputs shapes and clearance shapes
-    fn construct_trace_segment_shapes(
+    fn construct_trace_segment(
         start_position: FixedVec2, 
         end_position: FixedVec2,
         trace_width: f32,
         trace_clearance: f32,
-    ) -> (Vec<PrimShape>, Vec<PrimShape>){
+    ) -> TraceSegment {
         assert_ne!(
             start_position, end_position,
             "Start and end positions should not be the same"
         );
-        let trace_segment = TraceSegment {
+         TraceSegment {
             start: start_position,
             end: end_position,
             width: trace_width,
             clearance: trace_clearance,
             layer: 0, // layer is not used in this function, but we need to provide it
-        };
-        // new trace segment may collide with obstacles or bounds
-        let shapes = trace_segment.to_shapes();
-        let clearance_shapes = trace_segment.to_clearance_shapes();
-        (shapes, clearance_shapes)
+        }
     }
 
-    fn check_collision_between_two_sets<'a, 'b, I1, I2>(shapes1: I1, shapes2: I2) -> bool
+    fn check_collision_between_two_sets<'a, 'b, I1, I2>(colliders1: I1, colliders2: I2) -> bool
     where
-        I1: Iterator<Item = &'a PrimShape> + Clone,
-        I2: Iterator<Item = &'b PrimShape> + Clone,
+        I1: Iterator<Item = &'a Collider> + Clone,
+        I2: Iterator<Item = &'b Collider> + Clone,
     {
-        for shape1 in shapes1 {
-            for shape2 in shapes2.clone() {
-                if shape1.collides_with(shape2) {
+        for collider1 in colliders1 {
+            for collider2 in colliders2.clone() {
+                if collider1.collides_with(collider2) {
                     return true;
                 }
             }
@@ -179,17 +142,21 @@ impl AStarModel {
             start_position, end_position,
             "Start and end positions should not be the same"
         );
-        let (trace_shapes, trace_clearance_shapes) = 
-            Self::construct_trace_segment_shapes(start_position, end_position, trace_width, trace_clearance);        
+        let trace_segment = Self::construct_trace_segment(start_position, end_position, trace_width, trace_clearance);
+        let trace_segment_colliders = trace_segment.to_colliders();
+        let trace_segment_clearance_colliders = trace_segment.to_clearance_colliders();
         let obstacle_shapes = self.obstacle_shapes.get(&layer).unwrap();
         let obstacle_clearance_shapes = self.obstacle_clearance_shapes.get(&layer).unwrap();
-        if Self::check_collision_between_two_sets(trace_shapes.iter(), obstacle_clearance_shapes.iter()) {
+        // temp:
+        let obstacle_colliders: Vec<_> = obstacle_shapes.iter().map(Collider::from_prim_shape).collect();
+        let obstacle_clearance_colliders: Vec<_> = obstacle_clearance_shapes.iter().map(Collider::from_prim_shape).collect();
+        if Self::check_collision_between_two_sets(trace_segment_colliders.iter(), obstacle_clearance_colliders.iter()) {
             return true; // collision with an obstacle
         }
-        if Self::check_collision_between_two_sets(trace_clearance_shapes.iter(), obstacle_shapes.iter()) {
+        if Self::check_collision_between_two_sets(trace_segment_clearance_colliders.iter(), obstacle_colliders.iter()) {
             return true; // collision with an obstacle clearance shape
         }
-        if self.collides_with_border(trace_shapes.iter()) {
+        if self.collides_with_border(trace_segment_colliders.iter()) {
             return true; // collision with the border
         }
         false // no collision
@@ -209,16 +176,20 @@ impl AStarModel {
             position: position.to_float(),
             diameter: via_diameter + clearance * 2.0,
         });
-        if self.collides_with_border(std::iter::once(&shape)) {
+        let collider = Collider::from_prim_shape(&shape);
+        let clearance_collider = Collider::from_prim_shape(&clearance_shape);
+        if self.collides_with_border(std::iter::once(&collider)) {
             return true; // collision with the border
         }
         let obstacle_shapes = self.obstacle_shapes.get(&layer).unwrap();
         let obstacle_clearance_shapes = self.obstacle_clearance_shapes.get(&layer).unwrap();
-        
-        if Self::check_collision_between_two_sets(std::iter::once(&shape), obstacle_clearance_shapes.iter()) {
+        // temp:
+        let obstacle_colliders: Vec<_> = obstacle_shapes.iter().map(Collider::from_prim_shape).collect();
+        let obstacle_clearance_colliders: Vec<_> = obstacle_clearance_shapes.iter().map(Collider::from_prim_shape).collect();
+        if Self::check_collision_between_two_sets(std::iter::once(&collider), obstacle_clearance_colliders.iter()) {
             return true; // collision with an obstacle clearance shape
         }
-        if Self::check_collision_between_two_sets(std::iter::once(&clearance_shape), obstacle_shapes.iter()) {
+        if Self::check_collision_between_two_sets(std::iter::once(&clearance_collider), obstacle_colliders.iter()) {
             return true; // collision with an obstacle
         }
         false // no collision
@@ -724,8 +695,7 @@ impl AStarModel {
                 position: temp_end.to_float(),
                 diameter: self.trace_width + self.trace_clearance * 2.0,
             });
-            if Self::check_collision_between_two_sets(std::iter::once(&end_circle_clearance_shape), obstacle_shapes.iter())
-                || self.check_collision_for_trace(
+            if self.check_collision_for_trace(
                 start_position,
                 temp_end,
                 self.trace_width,
