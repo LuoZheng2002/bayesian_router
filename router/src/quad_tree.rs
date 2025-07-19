@@ -1,4 +1,4 @@
-use shared::{collider::Collider, prim_shape::PrimShape};
+use shared::{collider::{BorderCollider, Collider}, prim_shape::PrimShape, vec2::FloatVec2};
 
 const MAX_OBJECTS: usize = 4;
 const MAX_DEPTH: usize = 10;
@@ -71,8 +71,35 @@ impl QuadTreeNode {
     }
     /// helper function that is called by insert and query
     fn fully_contained_in_boundary(collider: &Collider, x_min: f32, x_max: f32, y_min: f32, y_max: f32) -> bool {
-        // do not need to implement this, assume this is provided
-        todo!();
+        let left_border = BorderCollider{
+            point_on_border: FloatVec2::new(x_min, 0.0),
+            normal: FloatVec2::new(-1.0, 0.0),
+        };
+        if collider.collides_with(&Collider::Border(left_border)) {
+            return false; // collider collides with the left border, so it is not fully contained
+        }
+        let right_border = BorderCollider{
+            point_on_border: FloatVec2::new(x_max, 0.0),
+            normal: FloatVec2::new(1.0, 0.0),
+        };
+        if collider.collides_with(&Collider::Border(right_border)) {
+            return false; // collider collides with the right border, so it is not fully contained
+        }
+        let top_border = BorderCollider{
+            point_on_border: FloatVec2::new(0.0, y_max),
+            normal: FloatVec2::new(0.0, 1.0),
+        };
+        if collider.collides_with(&Collider::Border(top_border)) {
+            return false; // collider collides with the top border, so it is not fully contained
+        }
+        let bottom_border = BorderCollider{
+            point_on_border: FloatVec2::new(0.0, y_min),
+            normal: FloatVec2::new(0.0, -1.0),
+        };
+        if collider.collides_with(&Collider::Border(bottom_border)) {
+            return false; // collider collides with the bottom border, so it is not fully contained
+        }
+        true
     }
     pub fn insert(&mut self, collider: Collider) -> bool {
         if !Self::fully_contained_in_boundary(&collider, self.x_min, self.x_max, self.y_min, self.y_max) {
@@ -121,7 +148,7 @@ impl QuadTreeNode {
         true
     }
 
-    pub fn query_and_check_collision(&self, collider: &Collider) -> bool {
+    pub fn collides_with(&self, collider: &Collider) -> bool {
         // query all the shapes that have a potential to collide with the given shape
         if !Self::fully_contained_in_boundary(collider, self.x_min, self.x_max, self.y_min, self.y_max) {
             return false; // shape is not fully contained in this node's boundary
@@ -131,6 +158,22 @@ impl QuadTreeNode {
                 return true; // found a collision
             }
         }
-        todo!();
+        if let Some(children) = &self.children {
+            for child in children.iter() {
+                if child.collides_with(collider) {
+                    return true; // found a collision in the children
+                }
+            }
+        }
+        false
+    }
+    pub fn collides_with_set<'a>(&self, colliders: impl Iterator<Item = &'a Collider>) -> bool {
+        // query all the shapes that have a potential to collide with the given set of shapes
+        for collider in colliders {
+            if self.collides_with(collider) {
+                return true; // found a collision
+            }
+        }
+        false
     }
 }
