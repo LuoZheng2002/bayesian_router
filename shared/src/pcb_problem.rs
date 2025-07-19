@@ -52,6 +52,7 @@ pub struct PcbProblem {
     pub center: FloatVec2,
     pub num_layers: usize, // 0: front, num_layers - 1: back
     pub obstacle_borders: Vec<BorderCollider>, // Borders that represent obstacles in the PCB
+    pub obstacle_border_outlines: Vec<Line>, // Outlines of the borders, used for rendering
     pub obstacle_polygons: Vec<PolygonCollider>, // Polygons that represent obstacles in the PCB
     pub nets: HashMap<NetName, NetInfo>, // NetID to NetInfo
     pub connection_id_generator: Box<dyn Iterator<Item = ConnectionID> + Send + 'static>, // A generator for ConnectionID, starting from 0
@@ -79,11 +80,12 @@ impl PcbProblem {
             center,
             num_layers,
             obstacle_borders: Vec::new(),
-            scale_down_factor,
+            obstacle_border_outlines: Vec::new(),            
             obstacle_polygons: Vec::new(),
             nets: HashMap::new(),
             connection_id_generator: Box::new((0..).map(ConnectionID)),
             distinct_color_generator: Box::new(DistinctColorGenerator::new()),
+            scale_down_factor,
         }
     }
     pub fn add_net(&mut self, net_name: NetName, source: Pad, source_trace_width: f32, source_trace_clearance: f32, via_diameter: f32) {

@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::{Arc, Mutex}};
 
-use shared::{color_float3::ColorFloat3, pcb_problem::{NetName, PcbProblem, PcbSolution}, pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel}};
+use shared::{color_float3::ColorFloat3, pcb_problem::{NetName, PcbProblem, PcbSolution}, pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel}, prim_shape::PrimShape};
 
 use crate::{backtrack_node::BacktrackNode, block_or_sleep};
 
@@ -8,7 +8,7 @@ use crate::{backtrack_node::BacktrackNode, block_or_sleep};
 
 pub fn solve_pcb_problem(
     pcb_problem: &PcbProblem,
-    pcb_render_model: Arc<Mutex<PcbRenderModel>>,
+    pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>,
 ) -> Result<PcbSolution, String> {
     let mut node_stack: Vec<BacktrackNode> = Vec::new();
 
@@ -42,6 +42,7 @@ pub fn solve_pcb_problem(
     fn node_to_pcb_render_model(problem: &PcbProblem, node: &BacktrackNode)-> PcbRenderModel{
         let mut trace_shape_renderables: Vec<RenderableBatch> = Vec::new();
         let mut pad_shape_renderables: Vec<ShapeRenderable> = Vec::new();
+        let mut other_shape_renderables: Vec<ShapeRenderable> = Vec::new();
         let mut net_name_to_color: HashMap<NetName, ColorFloat3> = HashMap::new();
         for (_, net_info) in problem.nets.iter() {
             net_name_to_color.insert(net_info.net_name.clone(), net_info.color);
@@ -71,18 +72,29 @@ pub fn solve_pcb_problem(
                 .to_renderables(net_name_to_color[&fixed_trace.net_name].to_float4(1.0));
             trace_shape_renderables.extend(renderable_batches);
         }
+        for line in &problem.obstacle_border_outlines {
+            other_shape_renderables.push(ShapeRenderable {
+                shape: PrimShape::Line(line.clone()),
+                color: [1.0, 0.0, 1.0, 1.0], // magenta color for borders
+            });
+        }
         PcbRenderModel {
             width: problem.width,
             height: problem.height,
             center: problem.center,
             trace_shape_renderables,
             pad_shape_renderables,
+            other_shape_renderables,
         }
     }
 
-    fn display_and_block(node: &BacktrackNode, pcb_problem: &PcbProblem, pcb_render_model: Arc<Mutex<PcbRenderModel>>) {
+    fn display_and_block(node: &BacktrackNode, pcb_problem: &PcbProblem, pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>) {
+        let mut pcb_render_model = pcb_render_model.lock().unwrap();
+        if pcb_render_model.is_some() {
+            return; // already rendered, no need to update
+        }
         let render_model = node_to_pcb_render_model(pcb_problem, node);
-        pcb_render_model.update_pcb_render_model(render_model);
+        *pcb_render_model = Some(render_model);
         block_or_sleep::block_thread();
     }
 

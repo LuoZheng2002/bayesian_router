@@ -58,7 +58,7 @@ impl ProbaModel {
     pub fn create_and_solve(
         problem: &PcbProblem,
         fixed_traces: &HashMap<ConnectionID, FixedTrace>,
-        pcb_render_model: Arc<Mutex<PcbRenderModel>>,
+        pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>,
     ) -> Self {
         let mut connection_ids: Vec<ConnectionID> = Vec::new();
         for net_info in problem.nets.values() {
@@ -83,8 +83,12 @@ impl ProbaModel {
         };
         // display and block
         let display_and_block = |proba_model: &ProbaModel| {
+            let mut pcb_render_model = pcb_render_model.lock().unwrap();
+            if pcb_render_model.is_some(){
+                return;
+            }
             let render_model = proba_model.to_pcb_render_model(problem);
-            pcb_render_model.update_pcb_render_model(render_model);
+            *pcb_render_model = Some(render_model);
             block_or_sleep();
         };
         display_and_block(&proba_model);
@@ -111,7 +115,7 @@ impl ProbaModel {
     fn sample_new_traces(
         &mut self,
         problem: &PcbProblem,
-        pcb_render_model: Arc<Mutex<PcbRenderModel>>,
+        pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>,
     ) {
         let mut new_proba_traces: Vec<Rc<ProbaTrace>> = Vec::new();
 
@@ -304,6 +308,7 @@ impl ProbaModel {
                         quad_tree_x_max,
                         quad_tree_y_min,
                         quad_tree_y_max,
+                        0,
                     )))
                     .collect();
                 let mut obstacle_clearance_colliders: HashMap<usize, QuadTreeNode> = (0..problem.num_layers)
@@ -312,6 +317,7 @@ impl ProbaModel {
                         quad_tree_x_max,
                         quad_tree_y_min,
                         quad_tree_y_max,
+                        0,
                     )))
                     .collect();
                 for i in (0..problem.num_layers).into_iter() {
@@ -661,6 +667,7 @@ impl ProbaModel {
     pub fn to_pcb_render_model(&self, problem: &PcbProblem) -> PcbRenderModel {
         let mut trace_shape_renderables: Vec<RenderableBatch> = Vec::new();
         let mut pad_shape_renderables: Vec<ShapeRenderable> = Vec::new();
+        let mut other_shape_renderables: Vec<ShapeRenderable> = Vec::new();
         for (_, net_info) in problem.nets.iter() {
             // add source pad
             let source_renderables = net_info
@@ -702,12 +709,19 @@ impl ProbaModel {
                 pad_shape_renderables.extend(sink_clearance_renderables);
             }
         }
+        for line in &problem.obstacle_border_outlines {
+            other_shape_renderables.push(ShapeRenderable {
+                shape: PrimShape::Line(line.clone()),
+                color: [1.0, 0.0, 1.0, 1.0], // magenta color for borders
+            });
+        }
         PcbRenderModel {
             width: problem.width,
             height: problem.height,
             center: problem.center,
             trace_shape_renderables,
             pad_shape_renderables,
+            other_shape_renderables,
         }
     }
 

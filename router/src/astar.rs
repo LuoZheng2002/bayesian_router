@@ -13,7 +13,7 @@ use crate::{block_or_sleep::{block_or_sleep, block_thread}, quad_tree::QuadTreeN
 // use crate::post_process::optimize_path;
 
 use shared::{
-    binary_heap_item::BinaryHeapItem, collider::{BorderCollider, Collider}, hyperparameters::{ASTAR_STRIDE, DISPLAY_ASTAR, ESTIMATE_COEFFICIENT, MAX_TRIALS, VIA_COST}, pad::PadLayer, pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel}, prim_shape::{CircleShape, PrimShape, RectangleShape}, trace_path::{AStarNodeDirection, Direction, TraceAnchor, TraceAnchors, TracePath, TraceSegment, Via}, vec2::{FixedPoint, FixedVec2, FloatVec2}
+    binary_heap_item::BinaryHeapItem, collider::{BorderCollider, Collider}, hyperparameters::{ASTAR_STRIDE, DISPLAY_ASTAR, ESTIMATE_COEFFICIENT, MAX_TRIALS, VIA_COST}, pad::PadLayer, pcb_render_model::{self, PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel}, prim_shape::{CircleShape, PrimShape, RectangleShape}, trace_path::{AStarNodeDirection, Direction, TraceAnchor, TraceAnchors, TracePath, TraceSegment, Via}, vec2::{FixedPoint, FixedVec2, FloatVec2}
 };
 
 pub struct AStarModel {
@@ -802,11 +802,7 @@ impl AStarModel {
 
     // shape
 
-    fn display_and_block(
-        &self,
-        pcb_render_model: Arc<Mutex<PcbRenderModel>>,
-        frontier: &BinaryHeap<BinaryHeapItem<Reverse<NotNan<f64>>, Rc<AstarNode>>>,
-    ) {
+    fn astar_to_render_model(&self, frontier: &BinaryHeap<BinaryHeapItem<Reverse<NotNan<f64>>, Rc<AstarNode>>>) -> PcbRenderModel{
         let mut frontier_vec: Vec<BinaryHeapItem<Reverse<NotNan<f64>>, Rc<AstarNode>>> =
             frontier.clone().drain().collect();
         frontier_vec.reverse();
@@ -827,6 +823,7 @@ impl AStarModel {
             center: self.center,
             trace_shape_renderables: Vec::new(),
             pad_shape_renderables: Vec::new(),
+            other_shape_renderables: Vec::new(),
         };
 
         let obstacle_renderables = self
@@ -869,9 +866,18 @@ impl AStarModel {
             })
             .collect::<Vec<_>>();
         render_model
-            .trace_shape_renderables
-            .push(RenderableBatch(border_renderables));
+            .other_shape_renderables
+            .extend(border_renderables);
 
+        let quad_tree_renderables = self.obstacle_colliders.iter().flat_map(|(_, colliders)|{
+            colliders.to_outline_shapes()
+        });
+        render_model.other_shape_renderables.extend(
+            quad_tree_renderables.map(|shape| ShapeRenderable {
+                shape,
+                color: [0.0, 0.0, 1.0, 0.5], // blue quad tree colliders
+            }),
+        );
         for item in frontier_vec.iter() {
             let BinaryHeapItem {
                 key: total_cost,
@@ -920,13 +926,26 @@ impl AStarModel {
             }),
             color: [0.0, 1.0, 0.0, 1.0], // green end node
         };
-        render_model.pad_shape_renderables.push(start_renderable);
-        render_model.pad_shape_renderables.push(end_renderable);
-        pcb_render_model.update_pcb_render_model(render_model);
+        render_model.other_shape_renderables.push(start_renderable);
+        render_model.other_shape_renderables.push(end_renderable);
+        render_model
+    }
+
+    fn display_and_block(
+        &self,
+        pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>,
+        frontier: &BinaryHeap<BinaryHeapItem<Reverse<NotNan<f64>>, Rc<AstarNode>>>,
+    ) {
+        let mut pcb_render_model = pcb_render_model.lock().unwrap();
+        if pcb_render_model.is_some(){
+            return; // already rendered, no need to update
+        }
+        let render_model = self.astar_to_render_model(frontier);
+        *pcb_render_model = Some(render_model);
         block_or_sleep();
     }
 
-    pub fn run(&self, pcb_render_model: Arc<Mutex<PcbRenderModel>>) -> Result<AStarResult, String> {
+    pub fn run(&self, pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>) -> Result<AStarResult, String> {
         assert!(self.start.is_sum_even());
         assert!(self.end.is_sum_even());
         assert!(!self.start.is_x_odd_y_odd());

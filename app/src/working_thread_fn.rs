@@ -9,7 +9,7 @@ use router::{
 };
 use shared::pcb_render_model::PcbRenderModel;
 
-pub fn working_thread_fn(pcb_render_model: Arc<Mutex<PcbRenderModel>>) {
+pub fn working_thread_fn(pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>) {
     println!("Working thread started");
     let pcb_problem = pcb_problem1();
 

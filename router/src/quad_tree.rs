@@ -1,4 +1,4 @@
-use shared::{collider::{BorderCollider, Collider}, prim_shape::PrimShape, vec2::FloatVec2};
+use shared::{collider::{BorderCollider, Collider}, prim_shape::{Line, PrimShape}, vec2::FloatVec2};
 
 const MAX_OBJECTS: usize = 4;
 const MAX_DEPTH: usize = 10;
@@ -10,15 +10,15 @@ pub struct QuadTreeChildren{
     bottom_right: Box<QuadTreeNode>,
 }
 impl QuadTreeChildren{
-    pub fn new(parent_x_min: f32, parent_x_max: f32, parent_y_min: f32, parent_y_max: f32) -> Self {
+    pub fn new(parent_x_min: f32, parent_x_max: f32, parent_y_min: f32, parent_y_max: f32, parent_depth: usize) -> Self {
         let mid_x = (parent_x_min + parent_x_max) / 2.0;
         let mid_y = (parent_y_min + parent_y_max) / 2.0;
 
         Self {
-            top_left: Box::new(QuadTreeNode::new(parent_x_min, mid_x, parent_y_min, mid_y)),
-            top_right: Box::new(QuadTreeNode::new(mid_x, parent_x_max, parent_y_min, mid_y)),
-            bottom_left: Box::new(QuadTreeNode::new(parent_x_min, mid_x, mid_y, parent_y_max)),
-            bottom_right: Box::new(QuadTreeNode::new(mid_x, parent_x_max, mid_y, parent_y_max)),
+            top_left: Box::new(QuadTreeNode::new(parent_x_min, mid_x, parent_y_min, mid_y, parent_depth + 1)),
+            top_right: Box::new(QuadTreeNode::new(mid_x, parent_x_max, parent_y_min, mid_y, parent_depth + 1)),
+            bottom_left: Box::new(QuadTreeNode::new(parent_x_min, mid_x, mid_y, parent_y_max, parent_depth + 1)),
+            bottom_right: Box::new(QuadTreeNode::new(mid_x, parent_x_max, mid_y, parent_y_max, parent_depth + 1)),
         }
     }
     pub fn iter(&self) -> impl Iterator<Item = &QuadTreeNode> {
@@ -58,9 +58,9 @@ pub struct QuadTreeNode{
     pub children: Option<QuadTreeChildren>,
 }
 impl QuadTreeNode {
-    pub fn new(x_min: f32, x_max: f32, y_min: f32, y_max: f32) -> Self {
+    pub fn new(x_min: f32, x_max: f32, y_min: f32, y_max: f32, depth: usize) -> Self {
         Self {
-            depth: 0,
+            depth,
             x_min,
             x_max,
             y_min,
@@ -118,7 +118,7 @@ impl QuadTreeNode {
             (false, false, true) // if we have not reached the max depth, but have reached the max objects, we need to create children
                  => {
                 assert!(self.children.is_none(), "A node that has not reached the max depth should not have children");
-                self.children = Some(QuadTreeChildren::new(self.x_min, self.x_max, self.y_min, self.y_max));
+                self.children = Some(QuadTreeChildren::new(self.x_min, self.x_max, self.y_min, self.y_max, self.depth));
                 let children = self.children.as_mut().unwrap();
                 // try push all the existing objects into the children
                 let existing_shapes = std::mem::take(&mut self.objects);
@@ -175,5 +175,31 @@ impl QuadTreeNode {
             }
         }
         false
+    }
+    pub fn to_outline_shapes(&self)->Vec<PrimShape>{
+        let mut shapes = vec![
+            PrimShape::Line(Line{
+                start: FloatVec2::new(self.x_min, self.y_min),
+                end: FloatVec2::new(self.x_max, self.y_min),
+            }),
+            PrimShape::Line(Line{
+                start: FloatVec2::new(self.x_max, self.y_min),
+                end: FloatVec2::new(self.x_max, self.y_max),
+            }),
+            PrimShape::Line(Line{
+                start: FloatVec2::new(self.x_max, self.y_max),
+                end: FloatVec2::new(self.x_min, self.y_max),
+            }),
+            PrimShape::Line(Line{
+                start: FloatVec2::new(self.x_min, self.y_max),
+                end: FloatVec2::new(self.x_min, self.y_min),
+            }),
+        ];
+        if let Some(children) = &self.children {
+            for child in children.iter() {
+                shapes.extend(child.to_outline_shapes());
+            }
+        }
+        shapes
     }
 }

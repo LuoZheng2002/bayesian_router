@@ -105,7 +105,7 @@ impl BacktrackNode {
     pub fn from_fixed_traces(
         problem: &PcbProblem,
         fixed_traces: &HashMap<ConnectionID, FixedTrace>,
-        pcb_render_model: Arc<Mutex<PcbRenderModel>>,
+        pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>,
     ) -> Self {
         let proba_model = ProbaModel::create_and_solve(problem, fixed_traces, pcb_render_model);
         BacktrackNode::from_proba_model(&proba_model)
@@ -114,7 +114,7 @@ impl BacktrackNode {
     pub fn try_update_proba_model(
         &self,
         problem: &PcbProblem,
-        pcb_render_model: Arc<Mutex<PcbRenderModel>>,
+        pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>,
     ) -> Option<Self> {
         if self.prob_up_to_date {
             return None; // If the probabilistic model is already up to date, do nothing

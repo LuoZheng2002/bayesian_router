@@ -11,3 +11,4 @@ pub mod state;
 pub mod transparent_pipeline;
 pub mod vertex;
 pub mod working_thread_fn;
+pub mod line_pipeline;
