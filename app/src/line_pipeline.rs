@@ -12,13 +12,13 @@ use crate::{
     vertex::Vertex,
 };
 
-pub struct TransparentPipeline {
+pub struct LinePipeline {
     pub pipeline: RenderPipeline,
 }
 
-pub struct TransparentShapeBatch(pub Vec<(Arc<ShapeMesh>, Vec<ShapeInstance>)>);
+pub struct LineShapeBatch(pub Vec<(Arc<ShapeMesh>, Vec<ShapeInstance>)>);
 
-impl TransparentPipeline {
+impl LinePipeline {
     fn create_pipeline(
         device: &wgpu::Device,
         config: &wgpu::SurfaceConfiguration,
@@ -69,7 +69,7 @@ impl TransparentPipeline {
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
             primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList, // 1.
+                topology: wgpu::PrimitiveTopology::LineList, // 1.
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw, // 2.
                 cull_mode: Some(wgpu::Face::Back),
@@ -159,7 +159,7 @@ impl TransparentPipeline {
     pub fn render(
         &self,
         // Use Vec because MyMesh is not hashable, use Arc because it has to move to a new container to mismatch with instances
-        renderable_batches: &Vec<TransparentShapeBatch>,
+        renderable_batches: &Vec<LineShapeBatch>,
         encoder: &mut wgpu::CommandEncoder,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -168,7 +168,7 @@ impl TransparentPipeline {
         camera_bind_group: &wgpu::BindGroup,
     ) {
         for (idx, batch) in renderable_batches.iter().enumerate() {
-            let clear_color = if idx == 0 { true } else { false };
+            let clear_color = false;
             let mut render_pass =
                 self.create_render_pass(encoder, color_view, depth_view, clear_color);
             render_pass.set_pipeline(&self.pipeline);

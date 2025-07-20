@@ -2,7 +2,7 @@ use std::{collections::HashMap, num::NonZeroUsize, sync::Mutex};
 
 use lazy_static::lazy_static;
 
-use crate::vec2::FixedPoint;
+use crate::{color_float3::ColorFloat3, vec2::FixedPoint};
 
 pub const HALF_PROBABILITY_RAW_SCORE: f64 = 10.0;
 
@@ -19,8 +19,8 @@ pub const SECOND_ITERATION_NUM_TRACES: usize = 3;
 pub const THIRD_ITERATION_NUM_TRACES: usize = 4;
 pub const FOURTH_ITERATION_NUM_TRACES: usize = 2;
 
-pub const BLOCK_THREAD: bool = false; // Whether to block the thread when waiting for a trace to be generated
-pub const DISPLAY_ASTAR: bool = true; // Whether to display the A* search process
+// pub const BLOCK_THREAD: bool = true; // Whether to block the thread when waiting for a trace to be generated
+// pub const DISPLAY_ASTAR: bool = true; // Whether to display the A* search process
 pub const DISPLAY_OPTIMIZATION: bool = false; // Whether to display the optimization process
 pub const DISPLAY_PERIOD_MILLIS: u64 = 10;
 
@@ -37,6 +37,15 @@ pub const TURN_PENALTY: f64 = 1.0;
 pub const ESTIMATE_COEFFICIENT: f64 = 1.0;
 
 pub const VIA_COST: f64 = 2.0; // Cost of placing a via
+
+pub const NUM_TOP_RANKED_TO_TRY: usize = 3; // Number of top-ranked traces to try fixing in each iteration
+
+pub const LAYER_TO_TRACE_COLOR: [ColorFloat3; 4] = [
+    ColorFloat3::new(1.0, 0.0, 0.0), // Red for front layer
+    ColorFloat3::new(0.0, 0.0, 1.0), // Blue for back layer
+    ColorFloat3::new(1.0, 1.0, 0.0), // Yellow for top layer
+    ColorFloat3::new(0.0, 1.0, 0.0), // Green for bottom layer
+];
 
 lazy_static! {
     pub static ref ASTAR_STRIDE: FixedPoint = {

@@ -6,3 +6,4 @@ pub mod post_process;
 pub mod proba_model;
 pub mod quad_tree;
 pub mod test_pcb_problem;
+pub mod command_flags;

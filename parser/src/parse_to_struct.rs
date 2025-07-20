@@ -1,6 +1,7 @@
 //use core::net;
 use std::collections::HashMap;
 
+use cgmath::Deg;
 use shared::vec2::FloatVec2;
 
 use crate::{
@@ -130,6 +131,12 @@ fn parse_structure(s_expr: &Vec<SExpr>) -> Result<Structure, String> {
             }
             "rule" => {
                 continue;
+            }
+            "plane" => {
+                continue;
+            }
+            "keepout" => {
+                continue; // to do
             }
             _ => {
                 return Err(format!("Unknown structure item: {}", first_item));
@@ -290,7 +297,7 @@ fn parse_image(s_expr: &Vec<SExpr>) -> Result<Image, String> {
         .ok_or("Expected image name to be an atom")?
         .to_string();
 
-    let mut pins: HashMap<usize, Pin> = HashMap::new();
+    let mut pins: HashMap<String, Pin> = HashMap::new();
     for item in s_expr.iter().skip(2) {
         let expr_list = item.as_list().ok_or(format!(
             "Expected a list in the structure scope, found: {:?}",
@@ -307,31 +314,54 @@ fn parse_image(s_expr: &Vec<SExpr>) -> Result<Image, String> {
                 continue;
             }
             "pin" => {
-                let pad_stack_name = expr_list[1]
+                let pad_stack_name = expr_list.get(1)
+                    .ok_or("Expected pad stack name")?
                     .as_atom()
                     .ok_or("Pad stack name must be an atom")?
                     .to_string();
 
-                let pin_number = expr_list[2]
+                let mut next_index: usize = 2;
+                let mut rotation: Deg<f32> = Deg(0.0);
+                if let SExpr::List(pin_expr_list) = &expr_list.get(2)
+                    .ok_or("Expected pin definition")?
+                {
+                    next_index = 3;
+                    let first_item = pin_expr_list[0].as_atom().ok_or(
+                        "Expected rotation as the first item in rotation definition"
+                    )?;
+                    let first_item = first_item.parse::<String>().map_err(|_|"Failed to parse rotation as string")?;
+                    if first_item != "rotate" {
+                        return Err(format!("Expected 'rotate', found: {}", first_item));
+                    }
+                    let rot = pin_expr_list[1]
+                        .as_atom()
+                        .ok_or("Rotation must be an atom")?
+                        .parse::<f32>()
+                        .map_err(|e| format!("Invalid rotation: {}", e))?;
+                    rotation = Deg(rot);
+                }
+                let pin_number = expr_list.get(next_index)
+                    .ok_or("Expect pin number, but out of bound")?
                     .as_atom()
                     .ok_or("Pin number must be an atom")?
-                    .parse::<usize>()
-                    .map_err(|e| format!("Invalid pin number: {}", e))?;
-
-                let x = expr_list[3]
+                    .clone();
+                next_index += 1;
+                let x = expr_list.get(next_index)
+                    .ok_or("Expect x coordinate, but out of bound")?
                     .as_atom()
                     .ok_or("X coordinate must be a number")?
                     .parse::<f32>()
                     .map_err(|e| format!("Invalid x coordinate: {}", e))?;
-
-                let y = expr_list[4]
+                next_index += 1;
+                let y = expr_list.get(next_index)
+                    .ok_or("Expect y coordinate, but out of bound")?
                     .as_atom()
                     .ok_or("Y coordinate must be a number")?
                     .parse::<f32>()
                     .map_err(|e| format!("Invalid y coordinate: {}", e))?;
 
                 pins.insert(
-                    pin_number,
+                    pin_number.clone(),
                     Pin {
                         pad_stack_name,
                         pin_number,
@@ -339,6 +369,7 @@ fn parse_image(s_expr: &Vec<SExpr>) -> Result<Image, String> {
                             x,
                             y,
                         },
+                        rotation,
                     },
                 );
             }
@@ -444,6 +475,14 @@ fn parse_shape(s_expr: &Vec<SExpr>) -> Result<Shape, String> {
                 aperture_width,
                 vertices,
             })
+        }
+        "path" =>{
+            let aperture_width = shape_type[2]
+                .as_atom()
+                .ok_or("Aperture width must be a number")?
+                .parse::<f32>()
+                .map_err(|e| format!("Invalid aperture width: {}", e))?;
+            Ok(Shape::Circle { diameter: aperture_width })
         }
         _ => Err(format!("Unknown shape type: {}", first_item)),
     }
@@ -608,9 +647,7 @@ fn parse_net(s_expr: &Vec<SExpr>) -> Result<Net, String> {
         }
 
         let component_name = parts[0].to_string();
-        let pin_number = parts[1]
-            .parse::<usize>()
-            .map_err(|e| format!("Invalid pin number in '{}': {}", pin_str, e))?;
+        let pin_number = parts[1].to_string();
 
         pins.push(Pin2 {
             component_name,

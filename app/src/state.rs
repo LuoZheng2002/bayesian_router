@@ -1,10 +1,18 @@
-use std::{sync::{Arc, Mutex}, time::Instant};
+use std::{
+    sync::{Arc, Mutex},
+    time::Instant,
+};
 
 use cgmath::{Euler, Quaternion};
-use shared::{pcb_render_model::PcbRenderModel, prim_shape::{CircleShape, Line, PrimShape, RectangleShape}};
+use shared::{
+    pcb_render_model::{PcbRenderModel, ShapeRenderable},
+    prim_shape::{CircleShape, Line, PrimShape, RectangleShape},
+};
 
 use crate::{
-    orthographic_camera::OrthographicCamera, render_context::RenderContext, shape_instance::ShapeInstance, shape_mesh::ShapeMesh, transparent_pipeline::TransparentShapeBatch
+    line_pipeline::LineShapeBatch, orthographic_camera::OrthographicCamera,
+    render_context::RenderContext, shape_instance::ShapeInstance, shape_mesh::ShapeMesh,
+    transparent_pipeline::TransparentShapeBatch,
 };
 
 // model path,
@@ -18,8 +26,8 @@ pub struct State {
     pub cursor_timer: Option<Instant>,
     pub accumulated_frame_num: u32,
     pub transparent_shape_submissions: Option<Vec<TransparentShapeBatch>>,
+    pub line_shape_submissions: Option<Vec<LineShapeBatch>>,
     pub fps: u32,
-
     // pub pcb_width: f32,
     // pub pcb_height: f32,
 }
@@ -28,9 +36,9 @@ impl State {
     pub fn init(&mut self) {}
 
     pub fn update(
-        &mut self, 
+        &mut self,
         render_context: &RenderContext,
-        pcb_render_model: Arc<Mutex<PcbRenderModel>>,
+        pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>,
     ) {
         // calculate fps every 1 second
         let fps_timer = self.fps_timer.get_or_insert_with(|| Instant::now());
@@ -58,11 +66,15 @@ impl State {
         assert!(delta_time >= 0.0);
         // let speed = 0.1;
         // let delta_angle = current_time * speed;
-        let pcb_render_model = pcb_render_model.lock().unwrap();
-        let pcb_width = pcb_render_model.width;
-        let pcb_height = pcb_render_model.height;
-        let pcb_center_x = pcb_render_model.center.x;
-        let pcb_center_y = pcb_render_model.center.y;
+        let mut pcb_render_model = pcb_render_model.lock().unwrap();
+        let render_model = match &*pcb_render_model {
+            Some(model) => model,
+            None => return, // No PCB render model available
+        };
+        let pcb_width = render_model.width;
+        let pcb_height = render_model.height;
+        let pcb_center_x = render_model.center.x;
+        let pcb_center_y = render_model.center.y;
         // update camera
         let pcb_aspect_ratio = pcb_width / pcb_height;
         let screen_aspect_ratio = {
@@ -93,19 +105,23 @@ impl State {
         // render submissions
         let circle_mesh = render_context.circle_mesh.clone();
         let rect_mesh = render_context.square_mesh.clone();
-        let submissions = pcb_render_model_to_transparent_shape_submissions(&pcb_render_model, circle_mesh, rect_mesh);
-        self.transparent_shape_submissions = Some(submissions);
-        // self.transparent_shape_submissions = Some(vec![pcb_rect_batch]);
+        let line_mesh = render_context.line_mesh.clone();
+        let (transparent_submissions, line_submissions) =
+            pcb_render_model_to_shape_submissions(&render_model, circle_mesh, rect_mesh, line_mesh);
+        self.transparent_shape_submissions = Some(transparent_submissions);
+        self.line_shape_submissions = Some(line_submissions);
+        *pcb_render_model = None;
     }
 }
 
-pub fn pcb_render_model_to_transparent_shape_submissions(
+pub fn pcb_render_model_to_shape_submissions(
     pcb_render_model: &PcbRenderModel,
     circle_mesh: Arc<ShapeMesh>,
     rect_mesh: Arc<ShapeMesh>,
-) -> Vec<TransparentShapeBatch> {
-    
-    let mut submissions = Vec::new();
+    line_mesh: Arc<ShapeMesh>,
+) -> (Vec<TransparentShapeBatch>, Vec<LineShapeBatch>) {
+    let mut transparent_submissions = Vec::new();
+    let mut line_submissions = Vec::new();
 
     // Add PCB rectangle
     let pcb_center_x = pcb_render_model.center.x;
@@ -121,18 +137,16 @@ pub fn pcb_render_model_to_transparent_shape_submissions(
         color: [1.0, 1.0, 1.0, 0.3],
     };
     let pcb_rect_batch = TransparentShapeBatch(vec![(rect_mesh.clone(), vec![pcb_rect_instance])]);
-    submissions.push(pcb_rect_batch);
+    transparent_submissions.push(pcb_rect_batch);
 
-   
     // add traces
     for trace in &pcb_render_model.trace_shape_renderables {
         let mut circle_instances: Vec<ShapeInstance> = Vec::new();
         let mut rect_instances: Vec<ShapeInstance> = Vec::new();
-        let mut line_instances: Vec<ShapeInstance> = Vec::new();
-        for renderable in &trace.0{
+        for renderable in &trace.0 {
             let color = renderable.color;
-            match &renderable.shape{
-                PrimShape::Circle(circle_shape) =>{
+            match &renderable.shape {
+                PrimShape::Circle(circle_shape) => {
                     let CircleShape { diameter, position } = circle_shape;
                     let circle_instance = ShapeInstance {
                         position: [position.x, position.y, 0.0].into(),
@@ -145,9 +159,14 @@ pub fn pcb_render_model_to_transparent_shape_submissions(
                         color,
                     };
                     circle_instances.push(circle_instance);
-                },
+                }
                 PrimShape::Rectangle(rect_shape) => {
-                    let RectangleShape { width, height , position, rotation} = rect_shape;
+                    let RectangleShape {
+                        width,
+                        height,
+                        position,
+                        rotation,
+                    } = rect_shape;
                     let rect_instance = ShapeInstance {
                         position: [position.x, position.y, 0.0].into(),
                         rotation: Quaternion::from(Euler::new(
@@ -159,46 +178,28 @@ pub fn pcb_render_model_to_transparent_shape_submissions(
                         color,
                     };
                     rect_instances.push(rect_instance);
-                },
-                // PrimShape::Line(line) =>{
-                //     let Line { start, end } = line;
-                //     // the original vertices of the line are (-1, 0, 0) and (1, 0, 0)
-                //     // we need to calculate the position, rotation and scale of the line instance
-                //     // position is the midpoint of the line
-                //     let rotation_rad = (end.y - start.y).atan2(end.x - start.x);
-                //     let scale_x_and_y = (end.x - start.x).hypot(end.y - start.y) / 2.0;
-                //     let line_instance = ShapeInstance {
-                //         position: [(start.x + end.x) / 2.0, (start.y + end.y) / 2.0, 0.0].into(),
-                //         rotation: Quaternion::from(Euler::new(
-                //             cgmath::Rad(0.0),
-                //             cgmath::Rad(0.0),
-                //             cgmath::Rad(rotation_rad),                             
-                //         )),
-                //         scale: cgmath::Vector3::new(scale_x_and_y, scale_x_and_y, 1.0),
-                //         color,
-                //     };
-                //     line_instances.push(line_instance);
-                // }
+                }
+
                 PrimShape::Line(_) => panic!("Line shapes are not supported in trace renderables"),
             }
-        }      
+        }
         let mut batch_contents = Vec::new();
         if !circle_instances.is_empty() {
             batch_contents.push((circle_mesh.clone(), circle_instances));
         }
         if !rect_instances.is_empty() {
             batch_contents.push((rect_mesh.clone(), rect_instances));
-        }  
+        }
         if !batch_contents.is_empty() {
             let trace_batch = TransparentShapeBatch(batch_contents);
-            submissions.push(trace_batch);
+            transparent_submissions.push(trace_batch);
         }
     }
-     // Add pads
-    for renderable in &pcb_render_model.pad_shape_renderables {
+    // this works for both pads and other shapes
+    let mut add_renderable_to_submissions = |renderable: &ShapeRenderable| {
         let color = renderable.color;
-        match &renderable.shape{
-            PrimShape::Circle(circle_shape) =>{
+        match &renderable.shape {
+            PrimShape::Circle(circle_shape) => {
                 let CircleShape { diameter, position } = circle_shape;
                 let circle_instance = ShapeInstance {
                     position: [position.x, position.y, 0.0].into(),
@@ -210,11 +211,17 @@ pub fn pcb_render_model_to_transparent_shape_submissions(
                     scale: cgmath::Vector3::new(*diameter, *diameter, 1.0),
                     color,
                 };
-                let circle_batch = TransparentShapeBatch(vec![(circle_mesh.clone(), vec![circle_instance])]);
-                submissions.push(circle_batch);
-            },
+                let circle_batch =
+                    TransparentShapeBatch(vec![(circle_mesh.clone(), vec![circle_instance])]);
+                transparent_submissions.push(circle_batch);
+            }
             PrimShape::Rectangle(rect_shape) => {
-                let RectangleShape { width, height , position, rotation} = rect_shape;
+                let RectangleShape {
+                    width,
+                    height,
+                    position,
+                    rotation,
+                } = rect_shape;
                 let rect_instance = ShapeInstance {
                     position: [position.x, position.y, 0.0].into(),
                     rotation: Quaternion::from(Euler::new(
@@ -225,15 +232,41 @@ pub fn pcb_render_model_to_transparent_shape_submissions(
                     scale: cgmath::Vector3::new(*width, *height, 1.0),
                     color,
                 };
-                let rect_batch = TransparentShapeBatch(vec![(rect_mesh.clone(), vec![rect_instance])]);
-                submissions.push(rect_batch);
-            },
-            PrimShape::Line(_) => {
-                panic!("Line shapes are not supported in pad renderables");
+                let rect_batch =
+                    TransparentShapeBatch(vec![(rect_mesh.clone(), vec![rect_instance])]);
+                transparent_submissions.push(rect_batch);
+            }
+            PrimShape::Line(line) => {
+                let Line { start, end } = line;
+                // the original vertices of the line are (-1, 0, 0) and (1, 0, 0)
+                // we need to calculate the position, rotation and scale of the line instance
+                // position is the midpoint of the line
+                let rotation_rad = (end.y - start.y).atan2(end.x - start.x);
+                let scale_x_and_y = (end.x - start.x).hypot(end.y - start.y) / 2.0;
+                let line_instance = ShapeInstance {
+                    position: [(start.x + end.x) / 2.0, (start.y + end.y) / 2.0, 0.0].into(),
+                    rotation: Quaternion::from(Euler::new(
+                        cgmath::Rad(0.0),
+                        cgmath::Rad(0.0),
+                        cgmath::Rad(rotation_rad),
+                    )),
+                    scale: cgmath::Vector3::new(scale_x_and_y, scale_x_and_y, 1.0),
+                    color,
+                };
+                let line_batch = LineShapeBatch(vec![(line_mesh.clone(), vec![line_instance])]);
+                line_submissions.push(line_batch);
             }
         }
+    };
+    // Add pads
+    for renderable in &pcb_render_model.pad_shape_renderables {
+        add_renderable_to_submissions(renderable);
     }
-    submissions
+    // Add other shapes
+    for renderable in &pcb_render_model.other_shape_renderables {
+        add_renderable_to_submissions(renderable);
+    }
+    (transparent_submissions, line_submissions)
 }
 
 impl Default for State {
@@ -256,6 +289,7 @@ impl Default for State {
             cursor_timer: None,
             accumulated_frame_num: 0,
             transparent_shape_submissions: None,
+            line_shape_submissions: None,
             fps: 0,
             // pcb_width: 15.0,
             // pcb_height: 10.0,

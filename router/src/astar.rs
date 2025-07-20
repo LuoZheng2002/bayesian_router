@@ -3,21 +3,25 @@ use std::{
     cmp::Reverse,
     collections::{BinaryHeap, HashMap, HashSet},
     rc::Rc,
-    sync::{Arc, Mutex},
+    sync::{atomic::Ordering, Arc, Mutex},
 };
 
 use fixed::traits::Fixed;
 use ordered_float::NotNan;
 
-use crate::block_or_sleep::{block_or_sleep, block_thread};
-use crate::post_process::optimize_path;
+use crate::{
+    command_flags::{CommandFlag, COMMAND_CVS, COMMAND_LEVEL, COMMAND_MUTEXES}, quad_tree::QuadTreeNode
+};
+// use crate::post_process::optimize_path;
 
 use shared::{
     binary_heap_item::BinaryHeapItem,
     collider::{BorderCollider, Collider},
-    hyperparameters::{ASTAR_STRIDE, DISPLAY_ASTAR, ESTIMATE_COEFFICIENT, MAX_TRIALS, VIA_COST},
+    hyperparameters::{ASTAR_STRIDE, ESTIMATE_COEFFICIENT, MAX_TRIALS, VIA_COST},
     pad::PadLayer,
-    pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel},
+    pcb_render_model::{
+        self, PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel,
+    },
     prim_shape::{CircleShape, PrimShape, RectangleShape},
     trace_path::{
         AStarNodeDirection, Direction, TraceAnchor, TraceAnchors, TracePath, TraceSegment, Via,
@@ -31,6 +35,8 @@ pub struct AStarModel {
     pub center: FloatVec2,
     pub obstacle_shapes: Rc<HashMap<usize, Vec<PrimShape>>>,
     pub obstacle_clearance_shapes: Rc<HashMap<usize, Vec<PrimShape>>>,
+    pub obstacle_colliders: Rc<HashMap<usize, QuadTreeNode>>,
+    pub obstacle_clearance_colliders: Rc<HashMap<usize, QuadTreeNode>>,
     pub start: FixedVec2,
     pub end: FixedVec2,
     pub start_layers: PadLayer,
@@ -68,8 +74,28 @@ impl AStarModel {
         if let Some(border_shapes) = self.border_colliders_cache.borrow().as_ref() {
             return border_shapes.clone();
         }
-        let border_colliders: Rc<Vec<Collider>> = todo!();
-
+        let left_border = BorderCollider {
+            point_on_border: FloatVec2::new(self.center.x - self.width / 2.0, 0.0),
+            normal: FloatVec2::new(-1.0, 0.0),
+        };
+        let right_border = BorderCollider {
+            point_on_border: FloatVec2::new(self.center.x + self.width / 2.0, 0.0),
+            normal: FloatVec2::new(1.0, 0.0),
+        };
+        let top_border = BorderCollider {
+            point_on_border: FloatVec2::new(0.0, self.center.y + self.height / 2.0),
+            normal: FloatVec2::new(0.0, 1.0),
+        };
+        let bottom_border = BorderCollider {
+            point_on_border: FloatVec2::new(0.0, self.center.y - self.height / 2.0),
+            normal: FloatVec2::new(0.0, -1.0),
+        };
+        let border_colliders: Rc<Vec<Collider>> = Rc::new(vec![
+            Collider::Border(left_border),
+            Collider::Border(right_border),
+            Collider::Border(top_border),
+            Collider::Border(bottom_border),
+        ]);
         *self.border_colliders_cache.borrow_mut() = Some(border_colliders.clone());
         border_colliders
     }
@@ -77,8 +103,44 @@ impl AStarModel {
         if let Some(border_shapes) = self.border_shapes_cache.borrow().as_ref() {
             return border_shapes.clone();
         }
-        let border_shapes: Rc<Vec<PrimShape>> = todo!();
-
+        let top_left = FloatVec2::new(
+            self.center.x - self.width / 2.0,
+            self.center.y + self.height / 2.0,
+        );
+        let top_right = FloatVec2::new(
+            self.center.x + self.width / 2.0,
+            self.center.y + self.height / 2.0,
+        );
+        let bottom_left = FloatVec2::new(
+            self.center.x - self.width / 2.0,
+            self.center.y - self.height / 2.0,
+        );
+        let bottom_right = FloatVec2::new(
+            self.center.x + self.width / 2.0,
+            self.center.y - self.height / 2.0,
+        );
+        let left_border_shape = PrimShape::Line(shared::prim_shape::Line {
+            start: top_left,
+            end: bottom_left,
+        });
+        let right_border_shape = PrimShape::Line(shared::prim_shape::Line {
+            start: top_right,
+            end: bottom_right,
+        });
+        let top_border_shape = PrimShape::Line(shared::prim_shape::Line {
+            start: top_left,
+            end: top_right,
+        });
+        let bottom_border_shape = PrimShape::Line(shared::prim_shape::Line {
+            start: bottom_left,
+            end: bottom_right,
+        });
+        let border_shapes: Rc<Vec<PrimShape>> = Rc::new(vec![
+            left_border_shape,
+            right_border_shape,
+            top_border_shape,
+            bottom_border_shape,
+        ]);
         *self.border_shapes_cache.borrow_mut() = Some(border_shapes.clone());
         border_shapes
     }
@@ -100,12 +162,7 @@ impl AStarModel {
         end_pos: FixedVec2,
         layer: usize,
     ) -> Option<FixedVec2> {
-        assert!(Direction::is_two_points_valid_direction(start_pos, end_pos));
-        let end_circle_clearance_shape = PrimShape::Circle(CircleShape {
-            position: end_pos.to_float(),
-            diameter: self.trace_width + self.trace_clearance * 2.0,
-        });
-        let obstacle_shapes = self.obstacle_shapes.get(&layer).unwrap();
+        assert!(Direction::is_two_points_valid_direction(start_pos, end_pos));       
         if self.check_collision_for_trace(
             start_pos,
             end_pos,
@@ -173,28 +230,13 @@ impl AStarModel {
         );
         let trace_segment_colliders = trace_segment.to_colliders();
         let trace_segment_clearance_colliders = trace_segment.to_clearance_colliders();
-        let obstacle_shapes = self.obstacle_shapes.get(&layer).unwrap();
-        let obstacle_clearance_shapes = self.obstacle_clearance_shapes.get(&layer).unwrap();
-        // temp:
-        let obstacle_colliders: Vec<_> = obstacle_shapes
-            .iter()
-            .map(Collider::from_prim_shape)
-            .collect();
-        let obstacle_clearance_colliders: Vec<_> = obstacle_clearance_shapes
-            .iter()
-            .map(Collider::from_prim_shape)
-            .collect();
-        if Self::check_collision_between_two_sets(
-            trace_segment_colliders.iter(),
-            obstacle_clearance_colliders.iter(),
-        ) {
-            return true; // collision with an obstacle
-        }
-        if Self::check_collision_between_two_sets(
-            trace_segment_clearance_colliders.iter(),
-            obstacle_colliders.iter(),
-        ) {
+        let obstacle_colliders = self.obstacle_colliders.get(&layer).unwrap();
+        let obstacle_clearance_colliders = self.obstacle_clearance_colliders.get(&layer).unwrap();
+        if obstacle_colliders.collides_with_set(trace_segment_clearance_colliders.iter()) {
             return true; // collision with an obstacle clearance shape
+        }
+        if obstacle_clearance_colliders.collides_with_set(trace_segment_colliders.iter()) {
+            return true; // collision with an obstacle
         }
         if self.collides_with_border(trace_segment_colliders.iter()) {
             return true; // collision with the border
@@ -218,31 +260,16 @@ impl AStarModel {
         });
         let collider = Collider::from_prim_shape(&shape);
         let clearance_collider = Collider::from_prim_shape(&clearance_shape);
-        if self.collides_with_border(std::iter::once(&collider)) {
-            return true; // collision with the border
-        }
-        let obstacle_shapes = self.obstacle_shapes.get(&layer).unwrap();
-        let obstacle_clearance_shapes = self.obstacle_clearance_shapes.get(&layer).unwrap();
-        // temp:
-        let obstacle_colliders: Vec<_> = obstacle_shapes
-            .iter()
-            .map(Collider::from_prim_shape)
-            .collect();
-        let obstacle_clearance_colliders: Vec<_> = obstacle_clearance_shapes
-            .iter()
-            .map(Collider::from_prim_shape)
-            .collect();
-        if Self::check_collision_between_two_sets(
-            std::iter::once(&collider),
-            obstacle_clearance_colliders.iter(),
-        ) {
+        let obstacle_colliders = self.obstacle_colliders.get(&layer).unwrap();
+        let obstacle_clearance_colliders = self.obstacle_clearance_colliders.get(&layer).unwrap();
+        if obstacle_clearance_colliders.collides_with(&collider) {
             return true; // collision with an obstacle clearance shape
         }
-        if Self::check_collision_between_two_sets(
-            std::iter::once(&clearance_collider),
-            obstacle_colliders.iter(),
-        ) {
+        if obstacle_colliders.collides_with(&clearance_collider) {
             return true; // collision with an obstacle
+        }
+        if self.collides_with_border(std::iter::once(&collider)) {
+            return true; // collision with the border
         }
         false // no collision
     }
@@ -554,36 +581,13 @@ impl AStarModel {
         if !end_layers.contains(&layer) {
             return None; // not aligned with end layer
         }
-        assert_ne!(
-            position, self.end,
+        assert_ne!(position, self.end,
             "调用该函数前应确保已经处理与end重合的情况"
-        );
-        if position.x == self.end.x {
-            if position.y < self.end.y {
-                return Some(Direction::Up);
-            } else {
-                return Some(Direction::Down);
-            }
-        } else if position.y == self.end.y {
-            if position.x < self.end.x {
-                return Some(Direction::Right);
-            } else {
-                return Some(Direction::Left);
-            }
-        } else if (position.x + position.y) == (self.end.x + self.end.y) {
-            if position.x < self.end.x {
-                return Some(Direction::BottomRight);
-            } else {
-                return Some(Direction::TopLeft);
-            }
-        } else if (position.x - position.y) == (self.end.x - self.end.y) {
-            if position.x < self.end.x {
-                return Some(Direction::TopRight);
-            } else {
-                return Some(Direction::BottomLeft);
-            }
+        );        
+        match Direction::from_points(position, self.end) {
+            Ok(direction) => Some(direction),
+            Err(_) => None,
         }
-        None // not aligned with end
     }
     /// line 1 is finite, line 2 is infinite
     fn line_intersection_infinite(
@@ -748,7 +752,6 @@ impl AStarModel {
             (start_position.x - end_position.x).abs(),
             (start_position.y - end_position.y).abs(),
         );
-        let obstacle_shapes = self.obstacle_shapes.get(&layer).unwrap();
         while lower_bound + FixedPoint::DELTA < upper_bound {
             let mid_length = (lower_bound + upper_bound) / 2;
             let temp_end = start_position + direction.to_fixed_vec2(mid_length);
@@ -779,9 +782,14 @@ impl AStarModel {
         if !end_position.is_sum_even() || end_position.is_x_odd_y_odd() {
             result_length -= FixedPoint::DELTA; // ensure the result length is even
         }
-        if result_length == FixedPoint::ZERO {
+        if result_length <= FixedPoint::ZERO {
             return None;
         }
+        assert!(
+            result_length > FixedPoint::ZERO,
+            "Result length should be positive, but got: {}",
+            result_length
+        );
         let end_position = start_position + direction.to_fixed_vec2(result_length);
         assert!(
             end_position.is_sum_even(),
@@ -820,11 +828,10 @@ impl AStarModel {
 
     // shape
 
-    fn display_and_block(
+    fn astar_to_render_model(
         &self,
-        pcb_render_model: Arc<Mutex<PcbRenderModel>>,
         frontier: &BinaryHeap<BinaryHeapItem<Reverse<NotNan<f64>>, Rc<AstarNode>>>,
-    ) {
+    ) -> PcbRenderModel {
         let mut frontier_vec: Vec<BinaryHeapItem<Reverse<NotNan<f64>>, Rc<AstarNode>>> =
             frontier.clone().drain().collect();
         frontier_vec.reverse();
@@ -845,6 +852,7 @@ impl AStarModel {
             center: self.center,
             trace_shape_renderables: Vec::new(),
             pad_shape_renderables: Vec::new(),
+            other_shape_renderables: Vec::new(),
         };
 
         let obstacle_renderables = self
@@ -887,9 +895,19 @@ impl AStarModel {
             })
             .collect::<Vec<_>>();
         render_model
-            .trace_shape_renderables
-            .push(RenderableBatch(border_renderables));
+            .other_shape_renderables
+            .extend(border_renderables);
 
+        let quad_tree_renderables = self
+            .obstacle_colliders
+            .iter()
+            .flat_map(|(_, colliders)| colliders.to_outline_shapes());
+        render_model
+            .other_shape_renderables
+            .extend(quad_tree_renderables.map(|shape| ShapeRenderable {
+                shape,
+                color: [0.0, 0.0, 1.0, 0.5], // blue quad tree colliders
+            }));
         for item in frontier_vec.iter() {
             let BinaryHeapItem {
                 key: total_cost,
@@ -942,13 +960,40 @@ impl AStarModel {
             }),
             color: [0.0, 1.0, 0.0, 1.0], // green end node
         };
-        render_model.pad_shape_renderables.push(start_renderable);
-        render_model.pad_shape_renderables.push(end_renderable);
-        pcb_render_model.update_pcb_render_model(render_model);
-        block_or_sleep();
+        render_model.other_shape_renderables.push(start_renderable);
+        render_model.other_shape_renderables.push(end_renderable);
+        render_model
     }
 
-    pub fn run(&self, pcb_render_model: Arc<Mutex<PcbRenderModel>>) -> Result<AStarResult, String> {
+    fn display_when_necessary(
+        &self,
+        pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>,
+        frontier: &BinaryHeap<BinaryHeapItem<Reverse<NotNan<f64>>, Rc<AstarNode>>>,
+        command_flag: CommandFlag,
+    ) {
+        let current_command_level = COMMAND_LEVEL.load(Ordering::Relaxed);
+        let target_command_level = command_flag.get_level();
+        if current_command_level <= target_command_level {
+            {
+                let mut pcb_render_model = pcb_render_model.lock().unwrap();
+                if pcb_render_model.is_some() {
+                    return; // already rendered, no need to update
+                }
+                let render_model = self.astar_to_render_model(frontier);
+                *pcb_render_model = Some(render_model);
+            }
+            // block the thread until the user clicks a button
+            {
+                let mutex_guard = COMMAND_MUTEXES[0].lock().unwrap();
+                let _unused = COMMAND_CVS[0].wait(mutex_guard).unwrap();
+            }
+        }
+    }
+
+    pub fn run(
+        &self,
+        pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>,
+    ) -> Result<AStarResult, String> {
         assert!(self.start.is_sum_even());
         assert!(self.end.is_sum_even());
         assert!(!self.start.is_x_odd_y_odd());
@@ -977,9 +1022,8 @@ impl AStarModel {
             });
         }
         let mut visited: HashSet<AstarNodeKey> = HashSet::new();
-        if DISPLAY_ASTAR {
-            self.display_and_block(pcb_render_model.clone(), &frontier); // display the initial state of the frontier
-        }
+        self.display_when_necessary(pcb_render_model.clone(), &frontier, CommandFlag::AstarInOut); // display the initial state of the frontier
+
         let mut trial_count = 0;
         while !frontier.is_empty() {
             let item = frontier.pop().unwrap();
@@ -987,9 +1031,9 @@ impl AStarModel {
             let current_node = item.value.clone();
             if current_node.position == self.end {
                 frontier.push(item); // push the current node back to the frontier, so that it can be displayed
-                if DISPLAY_ASTAR {
-                    self.display_and_block(pcb_render_model.clone(), &frontier); // display the initial state of the frontier
-                }
+
+                self.display_when_necessary(pcb_render_model.clone(), &frontier, CommandFlag::AstarInOut); // display the initial state of the frontier
+
                 // Reached the end node, construct the trace path
                 let trace_path = current_node.to_trace_path(
                     self.trace_width,
@@ -1108,6 +1152,7 @@ impl AStarModel {
                     //     "is_aligned_with_end: ({}, {}) ({}, {})",
                     //     current_node.position.x, current_node.position.y, self.end.x, self.end.y
                     // );
+                    assert!(Direction::from_points(current_node.position, self.end).unwrap() == end_direction);
                     condition_count = condition_count + 1;
                     try_push_node_to_frontier(
                         AStarNodeDirection::Planar(end_direction),
@@ -1166,6 +1211,7 @@ impl AStarModel {
                 "There should not be 8 directions to grid points if the current position is not a grid point"
             );
             for (direction, end_position) in directions {
+                assert!(Direction::from_points(current_node.position, end_position).unwrap() == direction);
                 current_node_handled = true;
                 assert_ne!(current_node.position, end_position, "assert 5");
 
@@ -1178,6 +1224,7 @@ impl AStarModel {
                     None => continue, // if clamping fails, skip this direction
                 };
                 condition_count = condition_count + 1;
+                assert!(Direction::from_points(current_node.position, end_position).unwrap() == direction);
                 try_push_node_to_frontier(
                     AStarNodeDirection::Planar(direction),
                     end_position,
@@ -1190,6 +1237,7 @@ impl AStarModel {
                         current_node.layer,
                     ) {
                         condition_count = condition_count + 1;
+                        assert!(Direction::from_points(current_node.position, end_position).unwrap() == direction);
                         try_push_node_to_frontier(
                             AStarNodeDirection::Planar(direction),
                             intersection,
@@ -1225,6 +1273,7 @@ impl AStarModel {
                     None => continue, // if clamping fails, skip this direction
                 };
                 condition_count = condition_count + 1;
+                assert!(Direction::from_points(current_node.position, end_position).unwrap() == direction);
                 try_push_node_to_frontier(
                     AStarNodeDirection::Planar(direction),
                     end_position,
@@ -1237,6 +1286,7 @@ impl AStarModel {
                         current_node.layer,
                     ) {
                         condition_count = condition_count + 1;
+                        assert!(Direction::from_points(current_node.position, end_position).unwrap() == direction);
                         try_push_node_to_frontier(
                             AStarNodeDirection::Planar(direction),
                             intersection,
@@ -1263,6 +1313,7 @@ impl AStarModel {
                     ) {
                         // println!("4: {}, {}", end_position.x, end_position.y);
                         condition_count = condition_count + 1;
+                        assert!(Direction::from_points(current_node.position, end_position).unwrap() == direction);
                         try_push_node_to_frontier(
                             AStarNodeDirection::Planar(direction),
                             end_position,
@@ -1294,6 +1345,7 @@ impl AStarModel {
                     ) {
                         // println!("4.1: {}, {}", temp_end.unwrap().x, temp_end.unwrap().y);
                         condition_count = condition_count + 1;
+                        assert!(Direction::from_points(current_node.position, end_position).unwrap() == direction);
                         try_push_node_to_frontier(
                             AStarNodeDirection::Planar(direction),
                             end_position,
@@ -1317,6 +1369,7 @@ impl AStarModel {
                             ) {
                                 // println!("4.2: {}, {}", end_position.x, end_position.y);
                                 condition_count = condition_count + 1;
+                                assert!(Direction::from_points(current_node.position, end_position).unwrap() == direction);
                                 try_push_node_to_frontier(
                                     AStarNodeDirection::Planar(direction),
                                     end_position,
@@ -1342,9 +1395,7 @@ impl AStarModel {
             //     condition_count,
             //     frontier.len()
             // );
-            if DISPLAY_ASTAR {
-                self.display_and_block(pcb_render_model.clone(), &frontier); // display the initial state of the frontier
-            }
+            self.display_when_necessary(pcb_render_model.clone(), &frontier, CommandFlag::AstarFrontierOrUpdatePosterior); // display the initial state of the frontier
         }
         Err("No path found".to_string()) // no path found
     }
@@ -1374,6 +1425,10 @@ impl AstarNode {
     ) -> bool {
         match current_node.direction {
             AStarNodeDirection::None => {
+                if prev_node.is_some(){
+                    println!("Warning: current node has no direction, but previous node exists");
+                }
+
                 prev_node.is_none() // no previous node
             }
             AStarNodeDirection::Planar(direction) => {
@@ -1387,12 +1442,28 @@ impl AstarNode {
                     Ok(dir) => dir,
                     Err(_) => return false, // if the direction cannot be calculated, return false
                 };
+                if calculated_direction != direction {
+                    println!(
+                        "Warning: calculated direction {:?} does not match the expected direction {:?}",
+                        calculated_direction, direction
+                    );
+                    println!("Current position: {:?}, Previous position: {:?}", current_node.position, prev_position);
+                }
+                if current_node.layer != prev_layer{
+                    println!(
+                        "Warning: current node layer {} does not match previous node layer {}",
+                        current_node.layer, prev_layer
+                    );
+                }
                 calculated_direction == direction && current_node.layer == prev_layer
             }
             AStarNodeDirection::Vertical { from_layer } => {
                 let (prev_position, prev_layer) = match prev_node {
                     Some(node) => (node.position, node.layer),
-                    None => return false, // if no previous node, return false
+                    None => {
+                        println!("Warning: current node has no direction, but previous node exists");
+                        return false;
+                    }
                 };
                 prev_layer == from_layer
                     && current_node.layer != from_layer

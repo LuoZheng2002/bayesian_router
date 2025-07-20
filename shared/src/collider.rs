@@ -199,7 +199,7 @@ impl Collider {
         let (_poly_min, poly_max) = Self::project_polygon(polygon, axis);
         // project the border point onto the axis
         let border_projection = border.point_on_border.dot(axis);
-        poly_max <= border_projection
+        poly_max > border_projection
     }
     fn circle_border(circle: &CircleCollider, border: &BorderCollider) -> bool {
         // project the circle center onto the border normal
@@ -207,7 +207,7 @@ impl Collider {
         let (_circle_min, circle_max) = Self::project_circle(circle.position, radius, border.normal);
         let border_projection = border.point_on_border.dot(border.normal.normalize());
         // check if the distance from the border to the circle center is less than the radius
-        circle_max <= border_projection
+        circle_max > border_projection
     }
     pub fn collides_with(&self, other: &Collider) -> bool {
         match (self, other) {

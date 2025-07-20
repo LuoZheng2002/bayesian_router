@@ -1,7 +1,4 @@
-use std::{
-    cell::RefCell,
-    sync::Arc,
-};
+use std::{cell::RefCell, sync::Arc};
 
 use wgpu::{CompositeAlphaMode, PollType, util::DeviceExt};
 use winit::window::Window;
@@ -10,10 +7,11 @@ use crate::{
     // model_data::MyMesh,
     // model_instance::ModelInstance,
     camera_uniform::CameraUniform,
+    line_pipeline::LinePipeline,
     my_texture::MyTexture,
     shape_mesh::ShapeMesh,
     state::State,
-    transparent_pipeline::{TransparentPipeline},
+    transparent_pipeline::TransparentPipeline,
     vertex::Vertex, // ui_pipeline::UIPipeline,
 };
 
@@ -25,12 +23,14 @@ pub struct RenderContext {
     pub size: RefCell<winit::dpi::PhysicalSize<u32>>,
     pub depth_texture: RefCell<MyTexture>,
     pub transparent_pipeline: TransparentPipeline,
+    pub line_pipeline: LinePipeline,
     pub camera_buffer: wgpu::Buffer,
     pub camera_bind_group_layout: wgpu::BindGroupLayout,
     pub camera_bind_group: wgpu::BindGroup,
 
     pub square_mesh: Arc<ShapeMesh>,
     pub circle_mesh: Arc<ShapeMesh>,
+    pub line_mesh: Arc<ShapeMesh>,
 }
 
 impl RenderContext {
@@ -122,9 +122,11 @@ impl RenderContext {
 
         let transparent_pipeline =
             TransparentPipeline::new(&device, &config, &camera_bind_group_layout);
+        let line_pipeline = LinePipeline::new(&device, &config, &camera_bind_group_layout);
 
         let square_mesh = create_square_mesh(&device);
         let circle_mesh = create_circle_mesh(&device, 32);
+        let line_mesh = create_line_mesh(&device);
         RenderContext {
             surface,
             device,
@@ -133,11 +135,13 @@ impl RenderContext {
             size: RefCell::new(size),
             depth_texture: RefCell::new(depth_texture),
             transparent_pipeline,
+            line_pipeline,
             camera_buffer,
             camera_bind_group_layout,
             camera_bind_group,
             square_mesh,
             circle_mesh,
+            line_mesh,
         }
     }
     pub fn resize(&self, new_size: winit::dpi::PhysicalSize<u32>) {
@@ -151,8 +155,8 @@ impl RenderContext {
     }
 
     pub fn render(&self, state: &State) -> Result<(), wgpu::SurfaceError> {
-        if state.transparent_shape_submissions.is_none() {
-            println!("No transparent shape submissions, skipping render");
+        if state.transparent_shape_submissions.is_none() && state.line_shape_submissions.is_none() {
+            // println!("No transparent shape and line shape submissions, skipping render");
             return Ok(());
         }
         let output = self.surface.get_current_texture()?;
@@ -176,9 +180,19 @@ impl RenderContext {
             });
         // convert model instances to mesh instances
         let transparent_shape_submissions = &state.transparent_shape_submissions.as_ref().unwrap();
+        let line_shape_submissions = &state.line_shape_submissions.as_ref().unwrap();
         let depth_texture = self.depth_texture.borrow();
         self.transparent_pipeline.render(
             &transparent_shape_submissions,
+            &mut encoder,
+            &self.device,
+            &self.queue,
+            &view,
+            &depth_texture.view,
+            &self.camera_bind_group,
+        );
+        self.line_pipeline.render(
+            &line_shape_submissions,
             &mut encoder,
             &self.device,
             &self.queue,
@@ -275,6 +289,38 @@ pub fn create_circle_mesh(device: &wgpu::Device, segments: u16) -> Arc<ShapeMesh
     });
     let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Circle Index Buffer"),
+        contents: bytemuck::cast_slice(&indices),
+        usage: wgpu::BufferUsages::INDEX,
+    });
+    let shape_mesh = ShapeMesh {
+        vertex_buffer,
+        index_buffer,
+        num_indices: indices.len() as u32,
+    };
+    Arc::new(shape_mesh)
+}
+
+pub fn create_line_mesh(device: &wgpu::Device) -> Arc<ShapeMesh> {
+    let vertices = vec![
+        Vertex {
+            position: [-1.0, 0.0, 0.0],
+            tex_coords: [1.0, 0.5],
+            normal: [0.0, 0.0, 1.0],
+        },
+        Vertex {
+            position: [1.0, 0.0, 0.0],
+            tex_coords: [0.0, 0.5],
+            normal: [0.0, 0.0, 1.0],
+        },
+    ];
+    let indices: Vec<u16> = vec![0, 1];
+    let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Line Vertex Buffer"),
+        contents: bytemuck::cast_slice(&vertices),
+        usage: wgpu::BufferUsages::VERTEX,
+    });
+    let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Line Index Buffer"),
         contents: bytemuck::cast_slice(&indices),
         usage: wgpu::BufferUsages::INDEX,
     });

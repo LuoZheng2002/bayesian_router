@@ -1,5 +1,5 @@
 use crate::{
-    collider::Collider, hyperparameters::HALF_PROBABILITY_RAW_SCORE, pcb_render_model::{RenderableBatch, ShapeRenderable}, prim_shape::{CircleShape, PrimShape, RectangleShape}, vec2::{FixedPoint, FixedVec2, FloatVec2}
+    collider::Collider, hyperparameters::{HALF_PROBABILITY_RAW_SCORE, LAYER_TO_TRACE_COLOR}, pcb_render_model::{RenderableBatch, ShapeRenderable}, prim_shape::{CircleShape, PrimShape, RectangleShape}, vec2::{FixedPoint, FixedVec2, FloatVec2}
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Hash, Eq, PartialOrd, Ord)]
@@ -415,7 +415,8 @@ impl TracePath {
         let clearance_color = [color[0], color[1], color[2], color[3] / 2.0]; // semi-transparent color
         // Render the segments
         for segment in &self.segments {
-            let segment_renderables = segment.to_renderables(color);            
+            let segment_color = LAYER_TO_TRACE_COLOR[segment.layer].to_float4(1.0);
+            let segment_renderables = segment.to_renderables(segment_color);
             let segment_clearance_renderables = segment.to_clearance_renderables(clearance_color); // semi-transparent color
             renderables.extend(segment_renderables);
             clearance_renderables.extend(segment_clearance_renderables);
