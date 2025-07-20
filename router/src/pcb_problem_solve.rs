@@ -1,13 +1,10 @@
 use std::{
     collections::HashMap,
-    sync::{atomic::Ordering, Arc, Mutex},
+    sync::{atomic::Ordering, Arc, Mutex}, thread, time::Duration,
 };
 
 use shared::{
-    color_float3::ColorFloat3,
-    pcb_problem::{NetName, PcbProblem, PcbSolution},
-    pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel},
-    prim_shape::PrimShape,
+    color_float3::ColorFloat3, hyperparameters::NUM_TOP_RANKED_TO_TRY, pcb_problem::{NetName, PcbProblem, PcbSolution}, pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel}, prim_shape::PrimShape
 };
 
 use crate::{backtrack_node::BacktrackNode, block_or_sleep, command_flags::{CommandFlag, COMMAND_CVS, COMMAND_LEVEL, COMMAND_MUTEXES}};
@@ -29,7 +26,7 @@ pub fn solve_pcb_problem(
     }
 
     fn print_current_stack(node_stack: &Vec<BacktrackNode>) {
-        println!("Current stack:");
+        println!("Current stack: num_items: {}", node_stack.len());
         for (index, node) in node_stack.iter().enumerate() {
             println!(
                 "\tNode {}: up_to_date: {}, num fixed traces: {}, num remaining trace candidates: {}, ",
@@ -102,20 +99,22 @@ pub fn solve_pcb_problem(
         pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>,
     ) {
         let command_level = COMMAND_LEVEL.load(Ordering::Relaxed);
-        if command_level <= CommandFlag::ProbaModelResult.get_level(){            
-            {
-                let mut pcb_render_model = pcb_render_model.lock().unwrap();
-                if pcb_render_model.is_some() {
-                    return; // already rendered, no need to update
-                }
-                let render_model = node_to_pcb_render_model(pcb_problem, node);
-                *pcb_render_model = Some(render_model);
+        {
+            let mut pcb_render_model = pcb_render_model.lock().unwrap();
+            if pcb_render_model.is_some() {
+                return; // already rendered, no need to update
             }
+            let render_model = node_to_pcb_render_model(pcb_problem, node);
+            *pcb_render_model = Some(render_model);
+        }
+        if command_level <= CommandFlag::ProbaModelResult.get_level(){            
             // block the thread until the user clicks a button
             {
                 let mutex_guard = COMMAND_MUTEXES[3].lock().unwrap();
                 let _unused = COMMAND_CVS[3].wait(mutex_guard).unwrap();
             }
+        }else{
+            thread::sleep(Duration::from_millis(400));
         }
     }
 
@@ -144,7 +143,7 @@ pub fn solve_pcb_problem(
         let display_and_block_closure = |node: &BacktrackNode| {
             display_when_necessary(node, pcb_problem, pcb_render_model.clone());
         };
-        let new_node = top_node.try_fix_top_ranked_trace(display_and_block_closure);
+        let new_node = top_node.try_fix_top_k_ranked_trace(display_and_block_closure, NUM_TOP_RANKED_TO_TRY);
         match new_node {
             Some(new_node) => {
                 // If we successfully fixed a trace, push the new node onto the stack
@@ -161,7 +160,8 @@ pub fn solve_pcb_problem(
                 );
                 let current_node_index = node_stack.len() - 1;
                 let last_updated_index = last_updated_node_index(&node_stack);
-                let target_index = (current_node_index + last_updated_index + 1) / 2; // bias to right for consistency
+                // let target_index = (current_node_index + last_updated_index + 1) / 2; // bias to right for consistency
+                let target_index = current_node_index;
                 let new_node = node_stack[target_index]
                     .try_update_proba_model(pcb_problem, pcb_render_model.clone());
                 match new_node {
@@ -190,15 +190,16 @@ pub fn solve_pcb_problem(
                         print_current_stack(&node_stack);
                     }
                     None => {
-                        // If we failed to update the probabilistic model, we pop the current node from the stack
-                        assert!(
-                            target_index == node_stack.len() - 1,
-                            "target index must be the last node in the stack"
-                        );
-                        node_stack.pop();
-                        println!(
-                            "Failed to update the probabilistic model, popping the current node from the stack"
-                        );
+                        // // If we failed to update the probabilistic model, we pop the current node from the stack
+                        // assert!(
+                        //     target_index == node_stack.len() - 1,
+                        //     "target index must be the last node in the stack"
+                        // );
+                        // node_stack.pop();
+                        // println!(
+                        //     "Failed to update the probabilistic model, popping the current node from the stack"
+                        // );
+                        panic!("failed to find a solution")
                     }
                 }
             }

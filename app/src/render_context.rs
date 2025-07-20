@@ -156,7 +156,7 @@ impl RenderContext {
 
     pub fn render(&self, state: &State) -> Result<(), wgpu::SurfaceError> {
         if state.transparent_shape_submissions.is_none() && state.line_shape_submissions.is_none() {
-            println!("No transparent shape and line shape submissions, skipping render");
+            // println!("No transparent shape and line shape submissions, skipping render");
             return Ok(());
         }
         let output = self.surface.get_current_texture()?;

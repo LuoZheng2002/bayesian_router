@@ -162,12 +162,7 @@ impl AStarModel {
         end_pos: FixedVec2,
         layer: usize,
     ) -> Option<FixedVec2> {
-        assert!(Direction::is_two_points_valid_direction(start_pos, end_pos));
-        let end_circle_clearance_shape = PrimShape::Circle(CircleShape {
-            position: end_pos.to_float(),
-            diameter: self.trace_width + self.trace_clearance * 2.0,
-        });
-        let obstacle_shapes = self.obstacle_shapes.get(&layer).unwrap();
+        assert!(Direction::is_two_points_valid_direction(start_pos, end_pos));       
         if self.check_collision_for_trace(
             start_pos,
             end_pos,
@@ -586,36 +581,13 @@ impl AStarModel {
         if !end_layers.contains(&layer) {
             return None; // not aligned with end layer
         }
-        assert_ne!(
-            position, self.end,
+        assert_ne!(position, self.end,
             "调用该函数前应确保已经处理与end重合的情况"
-        );
-        if position.x == self.end.x {
-            if position.y < self.end.y {
-                return Some(Direction::Up);
-            } else {
-                return Some(Direction::Down);
-            }
-        } else if position.y == self.end.y {
-            if position.x < self.end.x {
-                return Some(Direction::Right);
-            } else {
-                return Some(Direction::Left);
-            }
-        } else if (position.x + position.y) == (self.end.x + self.end.y) {
-            if position.x < self.end.x {
-                return Some(Direction::BottomRight);
-            } else {
-                return Some(Direction::TopLeft);
-            }
-        } else if (position.x - position.y) == (self.end.x - self.end.y) {
-            if position.x < self.end.x {
-                return Some(Direction::TopRight);
-            } else {
-                return Some(Direction::BottomLeft);
-            }
+        );        
+        match Direction::from_points(position, self.end) {
+            Ok(direction) => Some(direction),
+            Err(_) => None,
         }
-        None // not aligned with end
     }
     /// line 1 is finite, line 2 is infinite
     fn line_intersection_infinite(
@@ -780,7 +752,6 @@ impl AStarModel {
             (start_position.x - end_position.x).abs(),
             (start_position.y - end_position.y).abs(),
         );
-        let obstacle_shapes = self.obstacle_shapes.get(&layer).unwrap();
         while lower_bound + FixedPoint::DELTA < upper_bound {
             let mid_length = (lower_bound + upper_bound) / 2;
             let temp_end = start_position + direction.to_fixed_vec2(mid_length);
@@ -811,9 +782,14 @@ impl AStarModel {
         if !end_position.is_sum_even() || end_position.is_x_odd_y_odd() {
             result_length -= FixedPoint::DELTA; // ensure the result length is even
         }
-        if result_length == FixedPoint::ZERO {
+        if result_length <= FixedPoint::ZERO {
             return None;
         }
+        assert!(
+            result_length > FixedPoint::ZERO,
+            "Result length should be positive, but got: {}",
+            result_length
+        );
         let end_position = start_position + direction.to_fixed_vec2(result_length);
         assert!(
             end_position.is_sum_even(),
@@ -1175,6 +1151,7 @@ impl AStarModel {
                     //     "is_aligned_with_end: ({}, {}) ({}, {})",
                     //     current_node.position.x, current_node.position.y, self.end.x, self.end.y
                     // );
+                    assert!(Direction::from_points(current_node.position, self.end).unwrap() == end_direction);
                     condition_count = condition_count + 1;
                     try_push_node_to_frontier(
                         AStarNodeDirection::Planar(end_direction),
@@ -1233,6 +1210,7 @@ impl AStarModel {
                 "There should not be 8 directions to grid points if the current position is not a grid point"
             );
             for (direction, end_position) in directions {
+                assert!(Direction::from_points(current_node.position, end_position).unwrap() == direction);
                 current_node_handled = true;
                 assert_ne!(current_node.position, end_position, "assert 5");
 
@@ -1245,6 +1223,7 @@ impl AStarModel {
                     None => continue, // if clamping fails, skip this direction
                 };
                 condition_count = condition_count + 1;
+                assert!(Direction::from_points(current_node.position, end_position).unwrap() == direction);
                 try_push_node_to_frontier(
                     AStarNodeDirection::Planar(direction),
                     end_position,
@@ -1257,6 +1236,7 @@ impl AStarModel {
                         current_node.layer,
                     ) {
                         condition_count = condition_count + 1;
+                        assert!(Direction::from_points(current_node.position, end_position).unwrap() == direction);
                         try_push_node_to_frontier(
                             AStarNodeDirection::Planar(direction),
                             intersection,
@@ -1292,6 +1272,7 @@ impl AStarModel {
                     None => continue, // if clamping fails, skip this direction
                 };
                 condition_count = condition_count + 1;
+                assert!(Direction::from_points(current_node.position, end_position).unwrap() == direction);
                 try_push_node_to_frontier(
                     AStarNodeDirection::Planar(direction),
                     end_position,
@@ -1304,6 +1285,7 @@ impl AStarModel {
                         current_node.layer,
                     ) {
                         condition_count = condition_count + 1;
+                        assert!(Direction::from_points(current_node.position, end_position).unwrap() == direction);
                         try_push_node_to_frontier(
                             AStarNodeDirection::Planar(direction),
                             intersection,
@@ -1330,6 +1312,7 @@ impl AStarModel {
                     ) {
                         // println!("4: {}, {}", end_position.x, end_position.y);
                         condition_count = condition_count + 1;
+                        assert!(Direction::from_points(current_node.position, end_position).unwrap() == direction);
                         try_push_node_to_frontier(
                             AStarNodeDirection::Planar(direction),
                             end_position,
@@ -1361,6 +1344,7 @@ impl AStarModel {
                     ) {
                         // println!("4.1: {}, {}", temp_end.unwrap().x, temp_end.unwrap().y);
                         condition_count = condition_count + 1;
+                        assert!(Direction::from_points(current_node.position, end_position).unwrap() == direction);
                         try_push_node_to_frontier(
                             AStarNodeDirection::Planar(direction),
                             end_position,
@@ -1384,6 +1368,7 @@ impl AStarModel {
                             ) {
                                 // println!("4.2: {}, {}", end_position.x, end_position.y);
                                 condition_count = condition_count + 1;
+                                assert!(Direction::from_points(current_node.position, end_position).unwrap() == direction);
                                 try_push_node_to_frontier(
                                     AStarNodeDirection::Planar(direction),
                                     end_position,
@@ -1439,6 +1424,10 @@ impl AstarNode {
     ) -> bool {
         match current_node.direction {
             AStarNodeDirection::None => {
+                if prev_node.is_some(){
+                    println!("Warning: current node has no direction, but previous node exists");
+                }
+
                 prev_node.is_none() // no previous node
             }
             AStarNodeDirection::Planar(direction) => {
@@ -1452,12 +1441,28 @@ impl AstarNode {
                     Ok(dir) => dir,
                     Err(_) => return false, // if the direction cannot be calculated, return false
                 };
+                if calculated_direction != direction {
+                    println!(
+                        "Warning: calculated direction {:?} does not match the expected direction {:?}",
+                        calculated_direction, direction
+                    );
+                    println!("Current position: {:?}, Previous position: {:?}", current_node.position, prev_position);
+                }
+                if current_node.layer != prev_layer{
+                    println!(
+                        "Warning: current node layer {} does not match previous node layer {}",
+                        current_node.layer, prev_layer
+                    );
+                }
                 calculated_direction == direction && current_node.layer == prev_layer
             }
             AStarNodeDirection::Vertical { from_layer } => {
                 let (prev_position, prev_layer) = match prev_node {
                     Some(node) => (node.position, node.layer),
-                    None => return false, // if no previous node, return false
+                    None => {
+                        println!("Warning: current node has no direction, but previous node exists");
+                        return false;
+                    }
                 };
                 prev_layer == from_layer
                     && current_node.layer != from_layer

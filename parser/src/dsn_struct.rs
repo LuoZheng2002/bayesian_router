@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use cgmath::Deg;
 use shared::vec2::FloatVec2;
 
 
@@ -42,13 +43,14 @@ pub struct Placement{
 
 pub struct Pin{
     pub pad_stack_name: String,
-    pub pin_number: usize,
+    pub pin_number: String,
     pub position: FloatVec2,
+    pub rotation: Deg<f32>,
 }
 
 pub struct Image{
     pub name: String,
-    pub pins: HashMap<usize, Pin>,
+    pub pins: HashMap<String, Pin>,
 }
 pub enum Shape{
     Circle{
@@ -86,7 +88,7 @@ pub struct Netclass{
 
 pub struct Pin2{
     pub component_name: String,
-    pub pin_number: usize,
+    pub pin_number: String,
 }
 
 pub struct Net{

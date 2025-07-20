@@ -88,7 +88,7 @@ fn buildpadmap(
 #[derive(Debug, Clone)]
 pub struct TransformedPad {
     pub component_name: String, // 如 "J1"
-    pub pin_number: usize,
+    pub pin_number: String,
     pub position: FloatVec2, // 最终PCB坐标系下的位置
     pub shape: PadShape,
     pub rotation: cgmath::Deg<f32>, // 最终旋转角度（度）
@@ -285,6 +285,8 @@ fn build_pad_map_and_scale(dsn: &DsnStruct, scale_down_factor: f32) -> Result<Ha
                     .get(&pin.pad_stack_name)
                     .ok_or_else(|| format!("Pad stack not found: {}", pin.pad_stack_name))?;
 
+
+                let pin_rotation = pin.rotation;
                 // 1. 先应用pin相对footprint的位移
                 let mut position = pin.position;
 
@@ -308,14 +310,15 @@ fn build_pad_map_and_scale(dsn: &DsnStruct, scale_down_factor: f32) -> Result<Ha
                         PlacementLayer::Back => PadLayer::Back,
                     }
                 };
+                let total_rotation = Deg(instance.rotation + pin_rotation.0);
                 pad_map.insert(
                     pad_key,
                     TransformedPad {
                         component_name: instance.reference.clone(),
-                        pin_number: *pin_number,
+                        pin_number: pin_number.clone(),
                         position: position / scale_down_factor,
                         shape,
-                        rotation: Deg(instance.rotation as f32),
+                        rotation: total_rotation,
                         pad_layer,
                     },
                 );

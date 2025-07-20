@@ -110,7 +110,7 @@ impl ProbaModel {
                     let _unused = COMMAND_CVS[target_command_level as usize].wait(mutex_guard).unwrap();
                 }                
             }
-        };
+        };        
         display_when_necessary(&proba_model, CommandFlag::UpdatePosteriorResult);
 
         // sample and then update posterior
@@ -118,6 +118,7 @@ impl ProbaModel {
         for j in 0..2 {
             println!("Sampling new traces for iteration {}", j + 1);
             proba_model.sample_new_traces(problem, pcb_render_model.clone());
+            println!("Done sampling new traces");
             display_when_necessary(&proba_model, CommandFlag::UpdatePosteriorResult);
 
             for i in 0..10 {
