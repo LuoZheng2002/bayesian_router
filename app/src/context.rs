@@ -5,10 +5,7 @@ use std::{
 
 use shared::pcb_render_model::PcbRenderModel;
 
-use crate::{
-    input_context::InputContext, render_context::RenderContext,
-    state::State,
-};
+use crate::{input_context::InputContext, render_context::RenderContext, state::State};
 
 #[derive(Default)]
 pub struct Context {
@@ -17,4 +14,5 @@ pub struct Context {
     pub input_context: RefCell<InputContext>,
     pub pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>,
     pub working_thread: Arc<Mutex<Option<std::thread::JoinHandle<()>>>>,
+    pub command_thread: Arc<Mutex<Option<std::thread::JoinHandle<()>>>>,
 }

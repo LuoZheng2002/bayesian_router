@@ -19,8 +19,8 @@ pub const SECOND_ITERATION_NUM_TRACES: usize = 3;
 pub const THIRD_ITERATION_NUM_TRACES: usize = 4;
 pub const FOURTH_ITERATION_NUM_TRACES: usize = 2;
 
-pub const BLOCK_THREAD: bool = false; // Whether to block the thread when waiting for a trace to be generated
-pub const DISPLAY_ASTAR: bool = true; // Whether to display the A* search process
+// pub const BLOCK_THREAD: bool = true; // Whether to block the thread when waiting for a trace to be generated
+// pub const DISPLAY_ASTAR: bool = true; // Whether to display the A* search process
 pub const DISPLAY_OPTIMIZATION: bool = false; // Whether to display the optimization process
 pub const DISPLAY_PERIOD_MILLIS: u64 = 10;
 

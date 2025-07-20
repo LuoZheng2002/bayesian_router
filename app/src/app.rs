@@ -8,10 +8,7 @@ use winit::{
     window::{Window, WindowAttributes, WindowId},
 };
 
-use crate::{
-    context::Context,
-    render_context::RenderContext, working_thread_fn,
-};
+use crate::{command_thread, context::Context, render_context::RenderContext, working_thread_fn};
 
 // thread_local! {
 //     pub static RENDER_CONTEXT: RefCell<Option<RenderContext>> = RefCell::new(None);
@@ -40,6 +37,10 @@ impl ApplicationHandler for App {
         let mut working_thread = self.context.working_thread.lock().unwrap();
         *working_thread = Some(std::thread::spawn(move || {
             working_thread_fn::working_thread_fn(pcb_render_model);
+        }));
+        let mut command_thread = self.context.command_thread.lock().unwrap();
+        *command_thread = Some(std::thread::spawn(move || {
+            command_thread::command_thread_fn();
         }));
     }
     fn device_event(

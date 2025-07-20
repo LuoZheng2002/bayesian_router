@@ -1,7 +1,4 @@
-use std::{
-    cell::RefCell,
-    sync::Arc,
-};
+use std::{cell::RefCell, sync::Arc};
 
 use wgpu::{CompositeAlphaMode, PollType, util::DeviceExt};
 use winit::window::Window;
@@ -9,7 +6,13 @@ use winit::window::Window;
 use crate::{
     // model_data::MyMesh,
     // model_instance::ModelInstance,
-    camera_uniform::CameraUniform, line_pipeline::LinePipeline, my_texture::MyTexture, shape_mesh::ShapeMesh, state::State, transparent_pipeline::TransparentPipeline, vertex::Vertex // ui_pipeline::UIPipeline,
+    camera_uniform::CameraUniform,
+    line_pipeline::LinePipeline,
+    my_texture::MyTexture,
+    shape_mesh::ShapeMesh,
+    state::State,
+    transparent_pipeline::TransparentPipeline,
+    vertex::Vertex, // ui_pipeline::UIPipeline,
 };
 
 pub struct RenderContext {
