@@ -1,9 +1,13 @@
 use nom::{
-    bytes::complete::{tag, take_while, take_while1}, character::complete::{char, digit1, multispace0, multispace1}, combinator::{map, map_res}, multi::many0, sequence::{delimited, preceded, separated_pair}, IResult, Parser
+    IResult, Parser,
+    bytes::complete::{tag, take_while, take_while1},
+    character::complete::{char, digit1, multispace0, multispace1},
+    combinator::{map, map_res},
+    multi::many0,
+    sequence::{delimited, preceded, separated_pair},
 };
 
 use crate::s_expr::SExpr;
-
 
 fn is_atom_char(c: char) -> bool {
     !c.is_whitespace() && c != '(' && c != ')'
@@ -15,11 +19,7 @@ fn parse_atom(input: &str) -> IResult<&str, SExpr> {
 }
 
 fn parse_quoted_string(input: &str) -> IResult<&str, SExpr> {
-    let (input, s) = delimited(
-        char('"'),
-        take_while(|c| c != '"'),
-        char('"')
-    ).parse(input)?;
+    let (input, s) = delimited(char('"'), take_while(|c| c != '"'), char('"')).parse(input)?;
     Ok((input, SExpr::Atom(s.to_string())))
 }
 
@@ -35,8 +35,9 @@ fn parse_list(input: &str) -> IResult<&str, SExpr> {
 fn parse_expr(input: &str) -> IResult<&str, SExpr> {
     preceded(
         multispace0,
-        nom::branch::alt((parse_list, parse_quoted_string, parse_atom))
-    ).parse(input)
+        nom::branch::alt((parse_list, parse_quoted_string, parse_atom)),
+    )
+    .parse(input)
 }
 
 pub fn parse_dsn_to_s_expr(input: &str) -> Result<SExpr, nom::Err<nom::error::Error<&str>>> {

@@ -1,13 +1,23 @@
 use std::{
     collections::HashMap,
-    sync::{atomic::Ordering, Arc, Mutex}, thread, time::Duration,
+    sync::{Arc, Mutex, atomic::Ordering},
+    thread,
+    time::Duration,
 };
 
 use shared::{
-    color_float3::ColorFloat3, hyperparameters::NUM_TOP_RANKED_TO_TRY, pcb_problem::{NetName, PcbProblem, PcbSolution}, pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel}, prim_shape::PrimShape
+    color_float3::ColorFloat3,
+    hyperparameters::NUM_TOP_RANKED_TO_TRY,
+    pcb_problem::{NetName, PcbProblem, PcbSolution},
+    pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel},
+    prim_shape::PrimShape,
 };
 
-use crate::{backtrack_node::BacktrackNode, block_or_sleep, command_flags::{CommandFlag, COMMAND_CVS, COMMAND_LEVEL, COMMAND_MUTEXES}};
+use crate::{
+    backtrack_node::BacktrackNode,
+    block_or_sleep,
+    command_flags::{COMMAND_CVS, COMMAND_LEVEL, COMMAND_MUTEXES, CommandFlag},
+};
 
 pub fn solve_pcb_problem(
     pcb_problem: &PcbProblem,
@@ -107,13 +117,13 @@ pub fn solve_pcb_problem(
             let render_model = node_to_pcb_render_model(pcb_problem, node);
             *pcb_render_model = Some(render_model);
         }
-        if command_level <= CommandFlag::ProbaModelResult.get_level(){            
+        if command_level <= CommandFlag::ProbaModelResult.get_level() {
             // block the thread until the user clicks a button
             {
                 let mutex_guard = COMMAND_MUTEXES[3].lock().unwrap();
                 let _unused = COMMAND_CVS[3].wait(mutex_guard).unwrap();
             }
-        }else{
+        } else {
             thread::sleep(Duration::from_millis(400));
         }
     }
@@ -143,7 +153,8 @@ pub fn solve_pcb_problem(
         let display_and_block_closure = |node: &BacktrackNode| {
             display_when_necessary(node, pcb_problem, pcb_render_model.clone());
         };
-        let new_node = top_node.try_fix_top_k_ranked_trace(display_and_block_closure, NUM_TOP_RANKED_TO_TRY);
+        let new_node =
+            top_node.try_fix_top_k_ranked_trace(display_and_block_closure, NUM_TOP_RANKED_TO_TRY);
         match new_node {
             Some(new_node) => {
                 // If we successfully fixed a trace, push the new node onto the stack

@@ -1,5 +1,6 @@
 pub mod app;
 pub mod camera_uniform;
+pub mod command_thread;
 pub mod context;
 pub mod input_context;
 pub mod line_pipeline;
@@ -12,4 +13,3 @@ pub mod state;
 pub mod transparent_pipeline;
 pub mod vertex;
 pub mod working_thread_fn;
-pub mod command_thread;

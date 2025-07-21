@@ -105,10 +105,7 @@ impl QuadTreeNode {
         }
     }
     /// helper function that is called by insert and query
-    fn fully_contained_in_boundary(
-        &self,
-        collider: &Collider,
-    ) -> bool {
+    fn fully_contained_in_boundary(&self, collider: &Collider) -> bool {
         let left_border = BorderCollider {
             point_on_border: FloatVec2::new(self.x_min, 0.0),
             normal: FloatVec2::new(-1.0, 0.0),
@@ -139,10 +136,7 @@ impl QuadTreeNode {
         }
         true
     }
-    fn partially_contained_in_boundary(
-        &self,
-        collider: &Collider,
-    ) -> bool {
+    fn partially_contained_in_boundary(&self, collider: &Collider) -> bool {
         let polygon_collider = PolygonCollider(vec![
             FloatVec2::new(self.x_min, self.y_min),
             FloatVec2::new(self.x_max, self.y_min),

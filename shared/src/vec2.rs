@@ -27,7 +27,7 @@ impl FixedVec2 {
     pub fn is_sum_even(&self) -> bool {
         (self.x.to_bits() + self.y.to_bits()) % 2 == 0
     }
-    pub fn to_nearest_even_even(&self)->FixedVec2{
+    pub fn to_nearest_even_even(&self) -> FixedVec2 {
         let x_is_odd = self.x.to_bits() & 1 == 1;
         let y_is_odd = self.y.to_bits() & 1 == 1;
         if x_is_odd && y_is_odd {
@@ -79,7 +79,6 @@ pub struct FloatVec2 {
 }
 
 impl FloatVec2 {
-
     pub fn new(x: f32, y: f32) -> Self {
         FloatVec2 { x, y }
     }
@@ -92,7 +91,6 @@ impl FloatVec2 {
     pub fn dot(self, other: FloatVec2) -> f32 {
         self.x * other.x + self.y * other.y
     }
-
 
     /// Returns a vector perpendicular to self (normal to edge)
     pub fn perp(self) -> FloatVec2 {
@@ -117,7 +115,7 @@ impl FloatVec2 {
     pub fn magnitude2(self) -> f32 {
         self.x * self.x + self.y * self.y
     }
-    pub fn length(self)->f32{
+    pub fn length(self) -> f32 {
         (self.x * self.x + self.y * self.y).sqrt()
     }
 }

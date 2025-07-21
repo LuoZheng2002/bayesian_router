@@ -1,6 +1,5 @@
 use crate::color_float3::ColorFloat3;
 
-
 pub struct DistinctColorGenerator {
     index: usize,
     golden_ratio_conjugate: f32,

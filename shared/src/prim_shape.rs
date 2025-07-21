@@ -2,9 +2,8 @@ use cgmath::{Rotation, Rotation2};
 
 use crate::vec2::FloatVec2;
 
-
 #[derive(Debug, Clone)]
-pub struct CircleShape{
+pub struct CircleShape {
     pub position: FloatVec2,
     pub diameter: f32,
 }
@@ -17,11 +16,10 @@ pub struct RectangleShape {
 }
 
 #[derive(Debug, Clone)]
-pub struct Line{
+pub struct Line {
     pub start: FloatVec2,
     pub end: FloatVec2,
 }
-
 
 #[derive(Debug, Clone)]
 pub enum PrimShape {

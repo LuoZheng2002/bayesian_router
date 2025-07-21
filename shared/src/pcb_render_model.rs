@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use crate::{prim_shape::PrimShape, vec2::FloatVec2};
 
 #[derive(Debug, Clone)]
-pub struct ShapeRenderable{
+pub struct ShapeRenderable {
     pub shape: PrimShape,
     pub color: [f32; 4], // RGBA color
 }
@@ -21,8 +21,6 @@ pub struct PcbRenderModel {
     pub other_shape_renderables: Vec<ShapeRenderable>,
 }
 
-
 pub trait UpdatePcbRenderModel {
     fn update_pcb_render_model(&self, pcb_render_model: PcbRenderModel);
 }
-

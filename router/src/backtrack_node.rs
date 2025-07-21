@@ -78,10 +78,8 @@ impl BacktrackNode {
         // if succeed, remove all traces from the same connection, and generate a new node with the same priority queue and a fixed trace
         // if fail, return error
         let mut result_candidate: Option<BinaryHeapItem<NotNan<f64>, Rc<ProbaTrace>>> = None;
-        for i in 0..k{
-            let top_ranked_candidate = self
-                .remaining_trace_candidates
-                .pop();
+        for i in 0..k {
+            let top_ranked_candidate = self.remaining_trace_candidates.pop();
             let top_ranked_candidate = match top_ranked_candidate {
                 Some(candidate) => candidate,
                 None => {
@@ -120,12 +118,12 @@ impl BacktrackNode {
                     break;
                 }
             }
-            if !collision_found{
+            if !collision_found {
                 result_candidate = Some(top_ranked_candidate);
                 break;
-            }                
+            }
         }
-        if let Some(result_candidate) = result_candidate {            
+        if let Some(result_candidate) = result_candidate {
             // If it does not collide, we can fix this trace
             let connection_id = result_candidate.value.connection_id;
             // Create a new fixed trace
@@ -177,9 +175,7 @@ impl BacktrackNode {
     pub fn try_fix_any_trace(&mut self) -> Option<Self> {
         // Try to fix any trace from the remaining candidates
         while self.remaining_trace_candidates.len() > 0 {
-            let top_ranked_candidate = self
-                .remaining_trace_candidates
-                .pop();
+            let top_ranked_candidate = self.remaining_trace_candidates.pop();
             let top_ranked_candidate = match top_ranked_candidate {
                 Some(candidate) => candidate,
                 None => {

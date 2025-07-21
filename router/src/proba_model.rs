@@ -3,18 +3,29 @@ use std::{
     collections::{BTreeSet, HashMap, HashSet},
     num::NonZeroUsize,
     rc::Rc,
-    sync::{atomic::Ordering, Arc, Mutex},
+    sync::{Arc, Mutex, atomic::Ordering},
 };
 
 use rand::distr::{Distribution, weighted::WeightedIndex};
 use shared::{
-    collider::Collider, deterministic_rand::create_deterministic_rng, hyperparameters::{
-        CONSTANT_LEARNING_RATE, ITERATION_TO_NUM_TRACES, ITERATION_TO_PRIOR_PROBABILITY, LINEAR_LEARNING_RATE, MAX_GENERATION_ATTEMPTS, NEXT_ITERATION_TO_REMAINING_PROBABILITY, OPPORTUNITY_COST_WEIGHT, SAMPLE_ITERATIONS, SCORE_WEIGHT
-    }, pcb_problem::{Connection, ConnectionID, FixedTrace, NetName, PcbProblem}, pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel}, prim_shape::PrimShape, trace_path::{TraceAnchors, TracePath}, vec2::{FixedPoint, FixedVec2}
+    collider::Collider,
+    deterministic_rand::create_deterministic_rng,
+    hyperparameters::{
+        CONSTANT_LEARNING_RATE, ITERATION_TO_NUM_TRACES, ITERATION_TO_PRIOR_PROBABILITY,
+        LINEAR_LEARNING_RATE, MAX_GENERATION_ATTEMPTS, NEXT_ITERATION_TO_REMAINING_PROBABILITY,
+        OPPORTUNITY_COST_WEIGHT, SAMPLE_ITERATIONS, SCORE_WEIGHT,
+    },
+    pcb_problem::{Connection, ConnectionID, FixedTrace, NetName, PcbProblem},
+    pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel},
+    prim_shape::PrimShape,
+    trace_path::{TraceAnchors, TracePath},
+    vec2::{FixedPoint, FixedVec2},
 };
 
 use crate::{
-    astar::AStarModel, command_flags::{CommandFlag, COMMAND_CVS, COMMAND_LEVEL, COMMAND_MUTEXES}, quad_tree::{self, QuadTreeNode}
+    astar::AStarModel,
+    command_flags::{COMMAND_CVS, COMMAND_LEVEL, COMMAND_MUTEXES, CommandFlag},
+    quad_tree::{self, QuadTreeNode},
 };
 
 #[derive(Copy, Debug, Clone, PartialEq, Hash, Eq, PartialOrd, Ord)]
@@ -104,11 +115,15 @@ impl ProbaModel {
                     *pcb_render_model = Some(render_model);
                 }
                 {
-                    let mutex_guard = COMMAND_MUTEXES[target_command_level as usize].lock().unwrap();
-                    let _unused = COMMAND_CVS[target_command_level as usize].wait(mutex_guard).unwrap();
-                }                
+                    let mutex_guard = COMMAND_MUTEXES[target_command_level as usize]
+                        .lock()
+                        .unwrap();
+                    let _unused = COMMAND_CVS[target_command_level as usize]
+                        .wait(mutex_guard)
+                        .unwrap();
+                }
             }
-        };        
+        };
         display_when_necessary(&proba_model, CommandFlag::UpdatePosteriorResult);
 
         // sample and then update posterior
@@ -259,6 +274,8 @@ impl ProbaModel {
                 )
                 .as_str(),
             );
+            let mut connection_to_visited_traces: HashMap<ConnectionID, Vec<TracePath>> =
+                HashMap::new();
             while num_generation_attempts < MAX_GENERATION_ATTEMPTS
                 && num_generated_traces
                     .values()
@@ -528,8 +545,53 @@ impl ProbaModel {
                         );
                         continue; // Skip this connection if it already has enough traces
                     }
+                    // first check if any of the traces in connection_to_visited_traces satisfy the constraints
+                    let current_connection_visited_traces = connection_to_visited_traces
+                        .entry(*connection_id)
+                        .or_insert_with(Vec::new);
+                    let mut found_satisfying_trace = false;
+                    for trace_path in current_connection_visited_traces.iter() {
+                        let trace_colliders = trace_path.to_colliders(problem.num_layers);
+                        let trace_clearance_colliders =
+                            trace_path.to_clearance_colliders(problem.num_layers);
+                        let mut current_trace_possible = true;
+                        for (layer, layered_trace_colliders) in trace_colliders.iter() {
+                            let layered_obstacle_clearance_colliders =
+                                obstacle_clearance_colliders.get(layer).unwrap();
+                            if layered_obstacle_clearance_colliders
+                                .collides_with_set(layered_trace_colliders.iter())
+                            {
+                                current_trace_possible = false; // the trace does not satisfy the constraints
+                                break;
+                            }
+                        }
+                        for (layer, layered_trace_clearance_colliders) in
+                            trace_clearance_colliders.iter()
+                        {
+                            let layered_obstacle_colliders = obstacle_colliders.get(layer).unwrap();
 
-                    // sample a trace for this connection
+                            if layered_obstacle_colliders
+                                .collides_with_set(layered_trace_clearance_colliders.iter())
+                            {
+                                current_trace_possible = false; // the trace does not satisfy the constraints
+                                break;
+                            }
+                        }
+                        if current_trace_possible {
+                            found_satisfying_trace = true;
+                            break; // we found a trace that satisfies the constraints, no need to generate a new one
+                        }
+                    }
+
+                    if found_satisfying_trace {
+                        println!(
+                            "Found a satisfying trace for ConnectionID {:?}, skipping A*",
+                            connection_id
+                        );
+                        continue; // Skip this connection if a satisfying trace is found
+                    }
+
+                    // prepare for the a star model
                     let start = net_info.source.position.to_fixed().to_nearest_even_even();
                     let end = connection.sink.position.to_fixed().to_nearest_even_even();
                     let start_layers = net_info.source.pad_layer;
@@ -563,14 +625,17 @@ impl ProbaModel {
                         }
                     };
                     let trace_path = astar_result.trace_path;
-                    if visited_traces.contains(&trace_path.anchors) {
-                        // println!(
-                        //     "Trace path {:?} already visited, skipping",
-                        //     trace_path.anchors
-                        // );
-                        continue;
-                    }
+                    // to do: in some rare cases, the trace path generated by A* may not be valid, we should check it
+                    // assert!(!visited_traces.contains(&trace_path.anchors), "Trace path is supposed to be a new one generated by A*");
+                    // to do: check if the trace path is in a local visited set
+                    // if not, add it into the local visited set
+
                     visited_traces.insert(trace_path.anchors.clone());
+                    connection_to_visited_traces
+                        .entry(*connection_id)
+                        .or_insert_with(Vec::new)
+                        .push(trace_path.clone());
+
                     let proba_trace_id = self
                         .trace_id_generator
                         .next()

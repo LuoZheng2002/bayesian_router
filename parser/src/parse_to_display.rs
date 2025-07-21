@@ -1,18 +1,22 @@
 use crate::dsn_struct::{
-    Boundary, Component, ComponentInst, DsnStruct, Netclass, Network, PadStack, Pin, Pin2, Placement, PlacementLayer, Shape
+    Boundary, Component, ComponentInst, DsnStruct, Netclass, Network, PadStack, Pin, Pin2,
+    Placement, PlacementLayer, Shape,
 };
 use crate::parse_to_display_format::{DisplayFormat, DisplayNetInfo, ExtraInfo};
 
 use cgmath::{Deg, Matrix2, Rad, Vector2};
+use core::{f32, net};
 use shared::collider::PolygonCollider;
 use shared::pad::{Pad, PadLayer, PadName, PadShape};
 use shared::pcb_problem::{NetClassName, NetName};
-use shared::prim_shape::{Line};
+use shared::prim_shape::Line;
 use shared::vec2::{FixedVec2, FloatVec2};
-use core::{f32, net};
 use std::collections::HashMap;
 
-fn calculate_boundary_and_scale(boundary: &Boundary, scale_down_factor: f32) -> Result<(f32, f32, FloatVec2), String> {
+fn calculate_boundary_and_scale(
+    boundary: &Boundary,
+    scale_down_factor: f32,
+) -> Result<(f32, f32, FloatVec2), String> {
     let mut min_x = f32::MAX;
     let mut max_x = f32::MIN;
     let mut min_y = f32::MAX;
@@ -38,7 +42,11 @@ fn calculate_boundary_and_scale(boundary: &Boundary, scale_down_factor: f32) -> 
         y: (min_y + max_y) / 2.0,
     };
 
-    Ok((width / scale_down_factor, height / scale_down_factor, center / scale_down_factor))
+    Ok((
+        width / scale_down_factor,
+        height / scale_down_factor,
+        center / scale_down_factor,
+    ))
 }
 
 /*
@@ -92,7 +100,7 @@ pub struct TransformedPad {
     pub position: FloatVec2, // 最终PCB坐标系下的位置
     pub shape: PadShape,
     pub rotation: cgmath::Deg<f32>, // 最终旋转角度（度）
-    pub pad_layer: PadLayer, // Pad所在的层
+    pub pad_layer: PadLayer,        // Pad所在的层
 }
 
 fn transform_point(point: FloatVec2, rotation_deg: f32, translation: FloatVec2) -> FloatVec2 {
@@ -142,12 +150,7 @@ where
     (a + b) / 2.0
 }
 
-fn distance_to_round_rect(
-    point: FloatVec2,
-    width: f32,
-    height: f32,
-    corner_radius: f32,
-) -> f32 {
+fn distance_to_round_rect(point: FloatVec2, width: f32, height: f32, corner_radius: f32) -> f32 {
     let right_threashold = width / 2.0 - corner_radius;
     let left_threashold = -right_threashold;
     let top_threashold = height / 2.0 - corner_radius;
@@ -170,7 +173,7 @@ fn distance_to_round_rect(
         (std::cmp::Ordering::Less, std::cmp::Ordering::Less) => {
             let top_left_corner = FloatVec2::new(left_threashold, top_threashold);
             ((point - top_left_corner).length() - corner_radius).abs()
-        },
+        }
         (std::cmp::Ordering::Greater, std::cmp::Ordering::Less) => {
             let top_right_corner = FloatVec2::new(right_threashold, top_threashold);
             ((point - top_right_corner).length() - corner_radius).abs()
@@ -183,9 +186,7 @@ fn distance_to_round_rect(
             let bottom_right_corner = FloatVec2::new(right_threashold, bottom_threashold);
             ((point - bottom_right_corner).length() - corner_radius).abs()
         }
-        (std::cmp::Ordering::Less, std::cmp::Ordering::Equal) => {
-            (point.x - left_threashold).abs()
-        }
+        (std::cmp::Ordering::Less, std::cmp::Ordering::Equal) => (point.x - left_threashold).abs(),
         (std::cmp::Ordering::Greater, std::cmp::Ordering::Equal) => {
             (point.x - right_threashold).abs()
         }
@@ -195,7 +196,7 @@ fn distance_to_round_rect(
         (std::cmp::Ordering::Equal, std::cmp::Ordering::Greater) => {
             (point.y - top_threashold).abs()
         }
-        _=>{
+        _ => {
             let horizontal_min = f32::min(
                 (point.x - left_threashold).abs(),
                 (point.x - right_threashold).abs(),
@@ -209,7 +210,7 @@ fn distance_to_round_rect(
     }
 }
 
-fn vertices_to_round_rect_and_scale(vertices: &Vec<FloatVec2>, scale_down_factor: f32)->PadShape{
+fn vertices_to_round_rect_and_scale(vertices: &Vec<FloatVec2>, scale_down_factor: f32) -> PadShape {
     let mut x_max = f32::MIN;
     let mut x_min = f32::MAX;
     let mut y_max = f32::MIN;
@@ -231,7 +232,12 @@ fn vertices_to_round_rect_and_scale(vertices: &Vec<FloatVec2>, scale_down_factor
         }
         distance_sum
     };
-    let corner_radius = golden_section_search(distance_to_round_rect_closure, min_corner_radius, max_corner_radius, 100);
+    let corner_radius = golden_section_search(
+        distance_to_round_rect_closure,
+        min_corner_radius,
+        max_corner_radius,
+        100,
+    );
     PadShape::RoundRect {
         width: width / scale_down_factor,
         height: height / scale_down_factor,
@@ -267,7 +273,10 @@ fn convert_shape_and_scale(shape: &Shape, scale_down_factor: f32) -> Result<PadS
     }
 }
 
-fn build_pad_map_and_scale(dsn: &DsnStruct, scale_down_factor: f32) -> Result<HashMap<String, TransformedPad>, String> {
+fn build_pad_map_and_scale(
+    dsn: &DsnStruct,
+    scale_down_factor: f32,
+) -> Result<HashMap<String, TransformedPad>, String> {
     let mut pad_map: HashMap<String, TransformedPad> = HashMap::new();
 
     for component in &dsn.placement.components {
@@ -285,13 +294,13 @@ fn build_pad_map_and_scale(dsn: &DsnStruct, scale_down_factor: f32) -> Result<Ha
                     .get(&pin.pad_stack_name)
                     .ok_or_else(|| format!("Pad stack not found: {}", pin.pad_stack_name))?;
 
-
                 let pin_rotation = pin.rotation;
                 // 1. 先应用pin相对footprint的位移
                 let mut position = pin.position;
 
                 // 2. 应用footprint旋转
-                position = transform_point(position, instance.rotation, FloatVec2 { x: 0.0, y: 0.0 });
+                position =
+                    transform_point(position, instance.rotation, FloatVec2 { x: 0.0, y: 0.0 });
 
                 // 3. 应用footprint位移
                 position.x += instance.position.x;
@@ -329,7 +338,11 @@ fn build_pad_map_and_scale(dsn: &DsnStruct, scale_down_factor: f32) -> Result<Ha
     Ok(pad_map)
 }
 
-fn pins_to_pads_and_scale(pins: &Vec<Pin2>, dsn: &DsnStruct, scale_down_factor: f32) -> Result<Vec<Pad>, String> {
+fn pins_to_pads_and_scale(
+    pins: &Vec<Pin2>,
+    dsn: &DsnStruct,
+    scale_down_factor: f32,
+) -> Result<Vec<Pad>, String> {
     let pad_map = build_pad_map_and_scale(&dsn, scale_down_factor)?;
     let mut pads: Vec<Pad> = Vec::new();
     let mut net_clearance_map = HashMap::new();
@@ -399,7 +412,10 @@ fn pins_to_pads_and_scale(pins: &Vec<Pin2>, dsn: &DsnStruct, scale_down_factor: 
 //         .ok_or_else(|| format!("Net '{}' doesn't belong to any netclass", net_name))
 // }
 
-fn parse_net_info_and_scale(dsn: &DsnStruct, scale_down_factor: f32) -> Result<HashMap<NetName, DisplayNetInfo>, String> {
+fn parse_net_info_and_scale(
+    dsn: &DsnStruct,
+    scale_down_factor: f32,
+) -> Result<HashMap<NetName, DisplayNetInfo>, String> {
     let mut net_info: HashMap<NetName, DisplayNetInfo> = HashMap::new();
     let mut net_to_net_class: HashMap<String, &Netclass> = HashMap::new();
     for netclass in dsn.network.netclasses.values() {
@@ -409,16 +425,30 @@ fn parse_net_info_and_scale(dsn: &DsnStruct, scale_down_factor: f32) -> Result<H
     }
     let mut net_to_via_diameter_scaled: HashMap<String, f32> = HashMap::new();
     for (net_name, netclass) in &net_to_net_class {
-        let pad_stack = dsn.library.pad_stacks.get(&netclass.via_name)
-            .ok_or_else(|| format!("Via '{}' not found for net '{}'", netclass.via_name, net_name))?;
+        let pad_stack = dsn
+            .library
+            .pad_stacks
+            .get(&netclass.via_name)
+            .ok_or_else(|| {
+                format!(
+                    "Via '{}' not found for net '{}'",
+                    netclass.via_name, net_name
+                )
+            })?;
         let via_diameter = match &pad_stack.shape {
             Shape::Circle { diameter } => *diameter as f32,
-            _ => return Err(format!("Invalid via '{}' for net '{}': not circular", netclass.via_name, net_name)),
+            _ => {
+                return Err(format!(
+                    "Invalid via '{}' for net '{}': not circular",
+                    netclass.via_name, net_name
+                ));
+            }
         };
         net_to_via_diameter_scaled.insert(net_name.clone(), via_diameter / scale_down_factor);
     }
     for all_nets in dsn.network.nets.iter() {
-        let net_class = net_to_net_class.get(&all_nets.name)
+        let net_class = net_to_net_class
+            .get(&all_nets.name)
             .ok_or_else(|| format!("Net '{}' doesn't belong to any netclass", all_nets.name))?;
         let net_name = all_nets.name.clone();
         let pads = pins_to_pads_and_scale(&all_nets.pins, &dsn, scale_down_factor)?;
@@ -442,18 +472,23 @@ fn parse_net_info_and_scale(dsn: &DsnStruct, scale_down_factor: f32) -> Result<H
 
 pub fn dsn_to_display(dsn: &DsnStruct) -> Result<DisplayFormat, String> {
     let unit = &dsn.resolution.unit;
-    let scale_down_factor: f32 = match unit.as_str(){
+    let scale_down_factor: f32 = match unit.as_str() {
         "um" => 1000.0,
-        _=>panic!("Unsupported unit: {}", unit),
+        _ => panic!("Unsupported unit: {}", unit),
     };
-    let (width, height, center) = calculate_boundary_and_scale(&dsn.structure.boundary, scale_down_factor)?;
+    let (width, height, center) =
+        calculate_boundary_and_scale(&dsn.structure.boundary, scale_down_factor)?;
     let num_layers = dsn.structure.layers.len();
-    if num_layers == 0 || num_layers % 2 == 1{
-        return Err(format!("Invalid number of layers: {}, must be even and greater than 0", num_layers));
+    if num_layers == 0 || num_layers % 2 == 1 {
+        return Err(format!(
+            "Invalid number of layers: {}, must be even and greater than 0",
+            num_layers
+        ));
     }
     let obstacle_lines: Vec<Line> = Vec::new();
     let obstacle_polygons: Vec<PolygonCollider> = Vec::new();
-    let net_info: HashMap<NetName, DisplayNetInfo> = parse_net_info_and_scale(&dsn, scale_down_factor)?;
+    let net_info: HashMap<NetName, DisplayNetInfo> =
+        parse_net_info_and_scale(&dsn, scale_down_factor)?;
 
     let display_format = DisplayFormat {
         width,

@@ -1,4 +1,7 @@
-use shared::{pad::{Pad, PadName}, pcb_problem::{NetName, PcbProblem}};
+use shared::{
+    pad::{Pad, PadName},
+    pcb_problem::{NetName, PcbProblem},
+};
 
 // convert_to_problem.rs
 use crate::parse_to_display_format::{DisplayFormat, ExtraInfo};
