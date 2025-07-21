@@ -22,6 +22,17 @@ pub enum PlacementLayer {
     Front,
     Back,
 }
+impl PlacementLayer {
+    const FRONT_STR: &'static str = "front";
+    const BACK_STR: &'static str = "back";
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Front => Self::FRONT_STR,
+            Self::Back => Self::BACK_STR,
+        }
+    }
+}
 
 pub struct ComponentInst {
     pub reference: String,
@@ -104,4 +115,14 @@ pub struct DsnStruct {
     pub placement: Placement,
     pub library: Library,
     pub network: Network,
+}
+
+impl DsnStruct {
+    pub fn get_layer_names(&self) -> Vec<String> {
+        self.structure
+            .layers
+            .iter()
+            .map(|layer| layer.name.clone())
+            .collect()
+    }
 }
