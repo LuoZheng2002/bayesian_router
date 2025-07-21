@@ -70,33 +70,36 @@ impl AStarModel {
             }
         }
     }
-
-    fn get_border_colliders(&self) -> Rc<Vec<Collider>> {
-        if let Some(border_shapes) = self.border_colliders_cache.borrow().as_ref() {
-            return border_shapes.clone();
-        }
+    pub fn calculate_border_colliders(width: f32, height: f32, center: FloatVec2) -> Rc<Vec<Collider>> {
         let left_border = BorderCollider {
-            point_on_border: FloatVec2::new(self.center.x - self.width / 2.0, 0.0),
+            point_on_border: FloatVec2::new(center.x - width / 2.0, 0.0),
             normal: FloatVec2::new(-1.0, 0.0),
         };
         let right_border = BorderCollider {
-            point_on_border: FloatVec2::new(self.center.x + self.width / 2.0, 0.0),
+            point_on_border: FloatVec2::new(center.x + width / 2.0, 0.0),
             normal: FloatVec2::new(1.0, 0.0),
         };
         let top_border = BorderCollider {
-            point_on_border: FloatVec2::new(0.0, self.center.y + self.height / 2.0),
+            point_on_border: FloatVec2::new(0.0, center.y + height / 2.0),
             normal: FloatVec2::new(0.0, 1.0),
         };
         let bottom_border = BorderCollider {
-            point_on_border: FloatVec2::new(0.0, self.center.y - self.height / 2.0),
+            point_on_border: FloatVec2::new(0.0, center.y - height / 2.0),
             normal: FloatVec2::new(0.0, -1.0),
         };
-        let border_colliders: Rc<Vec<Collider>> = Rc::new(vec![
+        Rc::new(vec![
             Collider::Border(left_border),
             Collider::Border(right_border),
             Collider::Border(top_border),
             Collider::Border(bottom_border),
-        ]);
+        ])
+    }
+    fn get_border_colliders(&self) -> Rc<Vec<Collider>> {
+        if let Some(border_shapes) = self.border_colliders_cache.borrow().as_ref() {
+            return border_shapes.clone();
+        }
+        let border_colliders =
+            Self::calculate_border_colliders(self.width, self.height, self.center);
         *self.border_colliders_cache.borrow_mut() = Some(border_colliders.clone());
         border_colliders
     }
@@ -1110,7 +1113,7 @@ impl AStarModel {
                     } else {
                         0.0 // no via cost for planar movements
                     };
-                    let actual_cost = current_node.actual_cost + length + via_cost; // to do: add turn penalty
+                    let actual_cost = current_node.actual_cost + length + via_cost;
                     let actual_length = current_node.actual_length + length;
                     let estimated_cost = AStarModel::octile_distance(&end_position, &self.end)
                         * ESTIMATE_COEFFICIENT;

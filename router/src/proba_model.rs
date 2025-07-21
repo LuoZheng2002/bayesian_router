@@ -23,9 +23,7 @@ use shared::{
 };
 
 use crate::{
-    astar::AStarModel,
-    command_flags::{COMMAND_CVS, COMMAND_LEVEL, COMMAND_MUTEXES, CommandFlag},
-    quad_tree::{self, QuadTreeNode},
+    astar::AStarModel, astar_check_struct::AStarCheck, command_flags::{CommandFlag, COMMAND_CVS, COMMAND_LEVEL, COMMAND_MUTEXES}, quad_tree::{self, QuadTreeNode}
 };
 
 #[derive(Copy, Debug, Clone, PartialEq, Hash, Eq, PartialOrd, Ord)]
@@ -165,11 +163,15 @@ impl ProbaModel {
         let mut proba_traces: HashMap<ProbaTraceID, Rc<ProbaTrace>> = HashMap::new();
         // visited TraceAnchors
         let mut visited_traces: BTreeSet<TraceAnchors> = BTreeSet::new();
-        for traces in self.connection_to_traces.values() {
+        let mut connection_to_visited_traces: HashMap<ConnectionID, Vec<TracePath>> = HashMap::new();
+        for (connection_id, traces) in self.connection_to_traces.iter() {
             if let Traces::Probabilistic(trace_map) = traces {
                 for (proba_trace_id, proba_trace) in trace_map.iter() {
                     proba_traces.insert(*proba_trace_id, proba_trace.clone());
                     visited_traces.insert(proba_trace.trace_path.anchors.clone());
+                    connection_to_visited_traces.entry(*connection_id)
+                        .or_insert_with(Vec::new)
+                        .push(proba_trace.trace_path.clone());
                 }
             }
         }
@@ -274,8 +276,8 @@ impl ProbaModel {
                 )
                 .as_str(),
             );
-            let mut connection_to_visited_traces: HashMap<ConnectionID, Vec<TracePath>> =
-                HashMap::new();
+            // let mut connection_to_visited_traces: HashMap<ConnectionID, Vec<TracePath>> =
+            //     HashMap::new();
             while num_generation_attempts < MAX_GENERATION_ATTEMPTS
                 && num_generated_traces
                     .values()
@@ -551,34 +553,46 @@ impl ProbaModel {
                         .or_insert_with(Vec::new);
                     let mut found_satisfying_trace = false;
                     for trace_path in current_connection_visited_traces.iter() {
-                        let trace_colliders = trace_path.to_colliders(problem.num_layers);
-                        let trace_clearance_colliders =
-                            trace_path.to_clearance_colliders(problem.num_layers);
-                        let mut current_trace_possible = true;
-                        for (layer, layered_trace_colliders) in trace_colliders.iter() {
-                            let layered_obstacle_clearance_colliders =
-                                obstacle_clearance_colliders.get(layer).unwrap();
-                            if layered_obstacle_clearance_colliders
-                                .collides_with_set(layered_trace_colliders.iter())
-                            {
-                                current_trace_possible = false; // the trace does not satisfy the constraints
-                                break;
-                            }
-                        }
-                        for (layer, layered_trace_clearance_colliders) in
-                            trace_clearance_colliders.iter()
-                        {
-                            let layered_obstacle_colliders = obstacle_colliders.get(layer).unwrap();
+                        // let trace_colliders = trace_path.to_colliders(problem.num_layers);
+                        // let trace_clearance_colliders =
+                        //     trace_path.to_clearance_colliders(problem.num_layers);
+                        // let mut current_trace_possible = true;
+                        // for (layer, layered_trace_colliders) in trace_colliders.iter() {
+                        //     let layered_obstacle_clearance_colliders =
+                        //         obstacle_clearance_colliders.get(layer).unwrap();
+                        //     if layered_obstacle_clearance_colliders
+                        //         .collides_with_set(layered_trace_colliders.iter())
+                        //     {
+                        //         current_trace_possible = false; // the trace does not satisfy the constraints
+                        //         break;
+                        //     }
+                        // }
+                        // for (layer, layered_trace_clearance_colliders) in
+                        //     trace_clearance_colliders.iter()
+                        // {
+                        //     let layered_obstacle_colliders = obstacle_colliders.get(layer).unwrap();
 
-                            if layered_obstacle_colliders
-                                .collides_with_set(layered_trace_clearance_colliders.iter())
-                            {
-                                current_trace_possible = false; // the trace does not satisfy the constraints
-                                break;
-                            }
-                        }
-                        if current_trace_possible {
-                            found_satisfying_trace = true;
+                        //     if layered_obstacle_colliders
+                        //         .collides_with_set(layered_trace_clearance_colliders.iter())
+                        //     {
+                        //         current_trace_possible = false; // the trace does not satisfy the constraints
+                        //         break;
+                        //     }
+                        // }
+                        // if current_trace_possible {
+                        //     found_satisfying_trace = true;
+                        //     break; // we found a trace that satisfies the constraints, no need to generate a new one
+                        // }
+                        let border_colliders = AStarModel::calculate_border_colliders(problem.width, problem.height, problem.center);
+                        let astar_check = AStarCheck{
+                            border_colliders,
+                            obstacle_colliders: obstacle_colliders.clone(),
+                            obstacle_clearance_colliders: obstacle_clearance_colliders.clone(),
+                            solution_trace: trace_path.clone(),
+                            num_layers: problem.num_layers,
+                        };
+                        if astar_check.check() {
+                            found_satisfying_trace = true; // the trace satisfies the constraints
                             break; // we found a trace that satisfies the constraints, no need to generate a new one
                         }
                     }
@@ -625,10 +639,18 @@ impl ProbaModel {
                         }
                     };
                     let trace_path = astar_result.trace_path;
+                        
+                    let astar_check = AStarCheck{
+                        border_colliders: astar_model.border_colliders_cache.borrow().as_ref().unwrap().clone(),
+                        obstacle_colliders: obstacle_colliders.clone(),
+                        obstacle_clearance_colliders: obstacle_clearance_colliders.clone(),
+                        solution_trace: trace_path.clone(),
+                        num_layers: problem.num_layers,
+                    };
+
+                    assert!(astar_check.check(), "A* generated trace collides with obstacles or borders");
                     // to do: in some rare cases, the trace path generated by A* may not be valid, we should check it
-                    // assert!(!visited_traces.contains(&trace_path.anchors), "Trace path is supposed to be a new one generated by A*");
-                    // to do: check if the trace path is in a local visited set
-                    // if not, add it into the local visited set
+                    assert!(!visited_traces.contains(&trace_path.anchors), "Trace path is supposed to be a new one generated by A*");       
 
                     visited_traces.insert(trace_path.anchors.clone());
                     connection_to_visited_traces
