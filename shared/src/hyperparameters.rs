@@ -51,13 +51,13 @@ pub const LAYER_TO_TRACE_COLOR: [ColorFloat3; 4] = [
 
 lazy_static! {
     pub static ref ASTAR_STRIDE: FixedPoint = {
-        let result = FixedPoint::from_num(1.27) + FixedPoint::DELTA;
+        let raw_stride: f32 = 2.54;
+        let mut result = FixedPoint::from_num(raw_stride);
         let result_bits = result.to_bits();
-        if result_bits & 1 == 0{
-            println!("A* search stride is even.");
-        }else{
-            println!("A* search stride is odd.");
+        if result_bits & 1 == 1{
+            result += FixedPoint::DELTA;
         }
+        assert!(result.to_bits() & 1 == 0, "A* stride must be even");
         result
     }; // A* search stride
     pub static ref SCORE_WEIGHT: Mutex<f64> = Mutex::new(0.3);
@@ -85,7 +85,7 @@ lazy_static! {
     pub static ref NEXT_ITERATION_TO_REMAINING_PROBABILITY: HashMap<NonZeroUsize, f64> = vec![
         (
             NonZeroUsize::new(1).unwrap(),
-            1.0 - FIRST_ITERATION_SUM_PROBABILITY
+            1.0
         ),
         (
             NonZeroUsize::new(2).unwrap(),

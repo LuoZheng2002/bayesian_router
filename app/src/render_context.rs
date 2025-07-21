@@ -154,7 +154,7 @@ impl RenderContext {
             MyTexture::create_depth_texture(&self.device, &config, "depth texture");
     }
 
-    pub fn render(&self, state: &State) -> Result<(), wgpu::SurfaceError> {
+    pub fn render(&self, state: &mut State) -> Result<(), wgpu::SurfaceError> {
         if state.transparent_shape_submissions.is_none() && state.line_shape_submissions.is_none() {
             // println!("No transparent shape and line shape submissions, skipping render");
             return Ok(());
@@ -212,6 +212,8 @@ impl RenderContext {
         self.queue.submit(std::iter::once(encoder.finish()));
         let _ = self.device.poll(PollType::Wait).unwrap();
         output.present();
+        state.transparent_shape_submissions = None;
+        state.line_shape_submissions = None;
         Ok(())
     }
 }

@@ -16,7 +16,7 @@ pub fn working_thread_fn(pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>) {
     println!("Working thread started");
     // let pcb_problem = pcb_problem2();
 
-    let dsn_file_content = std::fs::read_to_string("Digistump_ATtiny.dsn").unwrap();
+    let dsn_file_content = std::fs::read_to_string("vimdrones_esc_development_board.dsn").unwrap();
     let pcb_problem = match parse_end_to_end(dsn_file_content) {
         Ok(problem) => problem,
         Err(e) => {

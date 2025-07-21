@@ -68,7 +68,7 @@ impl ApplicationHandler for App {
                 let size = *render_context.size.borrow();
                 let mut state = self.context.state.borrow_mut();
                 state.update(render_context, self.context.pcb_render_model.clone());
-                match render_context.render(&state) {
+                match render_context.render(&mut state) {
                     Ok(_) => {}
                     // Reconfigure the surface if it's lost or outdated
                     Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {

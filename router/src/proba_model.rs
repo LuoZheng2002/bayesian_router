@@ -206,7 +206,7 @@ impl ProbaModel {
                     let posterior = proba_trace.get_posterior_with_fallback();
                     sum_posterior += posterior;
                 }
-                sum_posterior += NEXT_ITERATION_TO_REMAINING_PROBABILITY
+                let remaining_probability = *NEXT_ITERATION_TO_REMAINING_PROBABILITY
                     .get(&self.next_iteration)
                     .expect(
                         format!(
@@ -215,15 +215,22 @@ impl ProbaModel {
                         )
                         .as_str(),
                     );
+                assert_ne!(remaining_probability, 0.0);
+                sum_posterior += remaining_probability;
+
                 // normalize the posterior for each trace
                 // divide each posterior by the sum of all posteriors
                 for (proba_trace_id, proba_trace) in trace_ids.iter() {
                     let posterior = proba_trace.get_posterior_with_fallback();
+                    assert!(!posterior.is_nan(), "Posterior is NaN for trace ID {:?}", proba_trace_id);
                     let normalized_posterior = posterior / sum_posterior;
+                    assert!(!normalized_posterior.is_nan(), "Normalized posterior is NaN");
                     temp_normalized_posteriors.insert(*proba_trace_id, normalized_posterior);
                 }
             }
         }
+
+        let border_colliders = AStarModel::calculate_border_colliders(problem.width, problem.height, problem.center);
 
         // the outer loop for generating the dijkstra model
         for (net_name, net_info) in problem.nets.iter() {
@@ -552,40 +559,9 @@ impl ProbaModel {
                         .entry(*connection_id)
                         .or_insert_with(Vec::new);
                     let mut found_satisfying_trace = false;
-                    for trace_path in current_connection_visited_traces.iter() {
-                        // let trace_colliders = trace_path.to_colliders(problem.num_layers);
-                        // let trace_clearance_colliders =
-                        //     trace_path.to_clearance_colliders(problem.num_layers);
-                        // let mut current_trace_possible = true;
-                        // for (layer, layered_trace_colliders) in trace_colliders.iter() {
-                        //     let layered_obstacle_clearance_colliders =
-                        //         obstacle_clearance_colliders.get(layer).unwrap();
-                        //     if layered_obstacle_clearance_colliders
-                        //         .collides_with_set(layered_trace_colliders.iter())
-                        //     {
-                        //         current_trace_possible = false; // the trace does not satisfy the constraints
-                        //         break;
-                        //     }
-                        // }
-                        // for (layer, layered_trace_clearance_colliders) in
-                        //     trace_clearance_colliders.iter()
-                        // {
-                        //     let layered_obstacle_colliders = obstacle_colliders.get(layer).unwrap();
-
-                        //     if layered_obstacle_colliders
-                        //         .collides_with_set(layered_trace_clearance_colliders.iter())
-                        //     {
-                        //         current_trace_possible = false; // the trace does not satisfy the constraints
-                        //         break;
-                        //     }
-                        // }
-                        // if current_trace_possible {
-                        //     found_satisfying_trace = true;
-                        //     break; // we found a trace that satisfies the constraints, no need to generate a new one
-                        // }
-                        let border_colliders = AStarModel::calculate_border_colliders(problem.width, problem.height, problem.center);
+                    for trace_path in current_connection_visited_traces.iter() {                        
                         let astar_check = AStarCheck{
-                            border_colliders,
+                            border_colliders: border_colliders.clone(),
                             obstacle_colliders: obstacle_colliders.clone(),
                             obstacle_clearance_colliders: obstacle_clearance_colliders.clone(),
                             solution_trace: trace_path.clone(),
@@ -639,17 +615,7 @@ impl ProbaModel {
                         }
                     };
                     let trace_path = astar_result.trace_path;
-                        
-                    let astar_check = AStarCheck{
-                        border_colliders: astar_model.border_colliders_cache.borrow().as_ref().unwrap().clone(),
-                        obstacle_colliders: obstacle_colliders.clone(),
-                        obstacle_clearance_colliders: obstacle_clearance_colliders.clone(),
-                        solution_trace: trace_path.clone(),
-                        num_layers: problem.num_layers,
-                    };
 
-                    assert!(astar_check.check(), "A* generated trace collides with obstacles or borders");
-                    // to do: in some rare cases, the trace path generated by A* may not be valid, we should check it
                     assert!(!visited_traces.contains(&trace_path.anchors), "Trace path is supposed to be a new one generated by A*");       
 
                     visited_traces.insert(trace_path.anchors.clone());
