@@ -1,19 +1,16 @@
-use std::sync::{atomic::AtomicU8, Condvar, Mutex};
+use std::sync::{Condvar, Mutex, atomic::AtomicU8};
 
 use lazy_static::lazy_static;
 
-
-
-
-pub enum CommandFlag{
+pub enum CommandFlag {
     AstarFrontierOrUpdatePosterior,
     AstarInOut,
     UpdatePosteriorResult,
-    ProbaModelResult,    
+    ProbaModelResult,
     Auto,
 }
 
-impl CommandFlag{
+impl CommandFlag {
     pub fn get_level(&self) -> u8 {
         match self {
             CommandFlag::AstarFrontierOrUpdatePosterior => 0,
@@ -25,7 +22,7 @@ impl CommandFlag{
     }
 }
 
-lazy_static!{
+lazy_static! {
 
     pub static ref COMMAND_MUTEXES: [Mutex<()>; 5] = [
         Mutex::new(()), // For CommandFlag::AstarFrontierOrUpdatePosterior

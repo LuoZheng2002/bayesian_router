@@ -40,7 +40,7 @@ pub const VIA_COST: f64 = 2.0; // Cost of placing a via
 
 pub const NUM_TOP_RANKED_TO_TRY: usize = 3; // Number of top-ranked traces to try fixing in each iteration
 
-pub const SAMPLE_ITERATIONS: usize = 1;
+pub const SAMPLE_ITERATIONS: usize = 2;
 
 pub const LAYER_TO_TRACE_COLOR: [ColorFloat3; 4] = [
     ColorFloat3::new(1.0, 0.0, 0.0), // Red for front layer

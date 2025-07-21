@@ -1,5 +1,11 @@
+use std::collections::HashMap;
+
 use crate::{
-    collider::Collider, hyperparameters::{HALF_PROBABILITY_RAW_SCORE, LAYER_TO_TRACE_COLOR}, pcb_render_model::{RenderableBatch, ShapeRenderable}, prim_shape::{CircleShape, PrimShape, RectangleShape}, vec2::{FixedPoint, FixedVec2, FloatVec2}
+    collider::Collider,
+    hyperparameters::{HALF_PROBABILITY_RAW_SCORE, LAYER_TO_TRACE_COLOR},
+    pcb_render_model::{RenderableBatch, ShapeRenderable},
+    prim_shape::{CircleShape, PrimShape, RectangleShape},
+    vec2::{FixedPoint, FixedVec2, FloatVec2},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Hash, Eq, PartialOrd, Ord)]
@@ -15,15 +21,15 @@ pub enum Direction {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum AStarNodeDirection{
-    None, // neither horizontal nor vertical
+pub enum AStarNodeDirection {
+    None,              // neither horizontal nor vertical
     Planar(Direction), // Direction in the plane
-    Vertical{
+    Vertical {
         from_layer: usize, // Layer to place the via from
-    }
+    },
 }
 impl Direction {
-    pub fn opposite(&self)-> Direction {
+    pub fn opposite(&self) -> Direction {
         match self {
             Direction::Up => Direction::Down,
             Direction::Down => Direction::Up,
@@ -38,7 +44,10 @@ impl Direction {
     pub fn is_diagonal(&self) -> bool {
         matches!(
             self,
-            Direction::TopRight | Direction::TopLeft | Direction::BottomRight | Direction::BottomLeft
+            Direction::TopRight
+                | Direction::TopLeft
+                | Direction::BottomRight
+                | Direction::BottomLeft
         )
     }
     pub fn to_degree_angle(&self) -> f32 {
@@ -138,12 +147,12 @@ impl Direction {
         }
     }
 
-    pub fn is_two_points_valid_direction(start: FixedVec2, end: FixedVec2)->bool{
+    pub fn is_two_points_valid_direction(start: FixedVec2, end: FixedVec2) -> bool {
         match Self::from_points(start, end) {
             Ok(direction) => {
                 // Check if the direction is valid
                 Self::all_directions().contains(&direction)
-            },
+            }
             Err(_) => false,
         }
     }
@@ -216,7 +225,6 @@ pub struct TraceSegment {
     pub layer: usize,     // Layer of the trace segment
 }
 
-
 impl TraceSegment {
     pub fn get_direction(&self) -> Direction {
         Direction::from_points(self.start, self.end).unwrap()
@@ -273,10 +281,7 @@ impl TraceSegment {
     }
     pub fn to_colliders(&self) -> Vec<Collider> {
         let shapes = self.to_shapes();
-        shapes
-            .iter()
-            .map(Collider::from_prim_shape)
-            .collect()
+        shapes.iter().map(Collider::from_prim_shape).collect()
     }
     pub fn to_clearance_colliders(&self) -> Vec<Collider> {
         let clearance_shapes = self.to_clearance_shapes();
@@ -325,17 +330,30 @@ impl TraceSegment {
     }
 }
 
-
 #[derive(Debug, Clone)]
-pub struct Via{
+pub struct Via {
     pub position: FixedVec2, // Position of the via
-    pub diameter: f32, // Diameter of the via
-    pub clearance: f32, // Clearance around the via
-    pub min_layer: usize, // Inclusive, the layer where the via starts
-    pub max_layer: usize, // Inclusive, the layer where the via ends
+    pub diameter: f32,       // Diameter of the via
+    pub clearance: f32,      // Clearance around the via
+    pub min_layer: usize,    // Inclusive, the layer where the via starts
+    pub max_layer: usize,    // Inclusive, the layer where the via ends
 }
 
-impl Via{
+impl Via {
+    pub fn to_collider(&self) -> Collider {
+        let shape = PrimShape::Circle(CircleShape {
+            position: self.position.to_float(),
+            diameter: self.diameter,
+        });
+        Collider::from_prim_shape(&shape)
+    }
+    pub fn to_clearance_collider(&self) -> Collider {
+        let clearance_shape = PrimShape::Circle(CircleShape {
+            position: self.position.to_float(),
+            diameter: self.diameter + self.clearance * 2.0,
+        });
+        Collider::from_prim_shape(&clearance_shape)
+    }
     pub fn to_renderables(&self, color: [f32; 4]) -> Vec<ShapeRenderable> {
         // let hole_shape = PrimShape::Circle(CircleShape {
         //     position: self.position.to_float(),
@@ -361,15 +379,18 @@ impl Via{
             position: self.position.to_float(),
             diameter: self.diameter + self.clearance * 2.0,
         });
-        vec![ShapeRenderable { shape: clearance_shape, color }]
+        vec![ShapeRenderable {
+            shape: clearance_shape,
+            color,
+        }]
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct TraceAnchor{
+pub struct TraceAnchor {
     pub position: FixedVec2,
     pub start_layer: usize, // Inclusive, the layer where the trace starts
-    pub end_layer: usize, // Inclusive, the layer where the trace ends
+    pub end_layer: usize,   // Inclusive, the layer where the trace ends
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -379,12 +400,52 @@ pub struct TraceAnchors(pub Vec<TraceAnchor>); // List of turning points in the 
 pub struct TracePath {
     pub anchors: TraceAnchors, // List of turning points in the trace path, including start and end
     pub segments: Vec<TraceSegment>, // List of segments in the trace path
-    pub vias: Vec<Via>, // List of vias in the trace path
+    pub vias: Vec<Via>,        // List of vias in the trace path
     pub total_length: f64,
 }
 // shrink?
 
 impl TracePath {
+    pub fn to_colliders(&self, num_layers: usize) -> HashMap<usize, Vec<Collider>> {
+        let mut colliders: HashMap<usize, Vec<Collider>> =
+            (0..num_layers).map(|layer| (layer, Vec::new())).collect();
+        for segment in &self.segments {
+            let segment_colliders = segment.to_colliders();
+            colliders
+                .get_mut(&segment.layer)
+                .unwrap()
+                .extend(segment_colliders);
+        }
+        for via in &self.vias {
+            let collider = via.to_collider();
+            for layer in via.min_layer..=via.max_layer {
+                colliders.get_mut(&layer).unwrap().push(collider.clone());
+            }
+        }
+        colliders
+    }
+    pub fn to_clearance_colliders(&self, num_layers: usize) -> HashMap<usize, Vec<Collider>> {
+        let mut colliders: HashMap<usize, Vec<Collider>> =
+            (0..num_layers).map(|layer| (layer, Vec::new())).collect();
+        for segment in &self.segments {
+            let segment_clearance_colliders = segment.to_clearance_colliders();
+            colliders
+                .get_mut(&segment.layer)
+                .unwrap()
+                .extend(segment_clearance_colliders);
+        }
+        for via in &self.vias {
+            let clearance_collider = via.to_clearance_collider();
+            for layer in via.min_layer..=via.max_layer {
+                colliders
+                    .get_mut(&layer)
+                    .unwrap()
+                    .push(clearance_collider.clone());
+            }
+        }
+        colliders
+    }
+
     pub fn collides_with(&self, other: &TracePath) -> bool {
         for segment_self in &self.segments {
             for segment_other in &other.segments {

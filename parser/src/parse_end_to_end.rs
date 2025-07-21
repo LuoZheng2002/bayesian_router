@@ -2,13 +2,18 @@ use std::collections::HashMap;
 
 use shared::pcb_problem::PcbProblem;
 
-use crate::{dsn_struct::Shape, parse_to_display::{self, dsn_to_display}, parse_to_display_format::ExtraInfo, parse_to_pcbproblem::{self, Converter}, parse_to_s_expr::parse_dsn_to_s_expr, parse_to_struct::parse_s_expr_to_struct};
+use crate::{
+    dsn_struct::Shape,
+    parse_to_display::{self, dsn_to_display},
+    parse_to_display_format::ExtraInfo,
+    parse_to_pcbproblem::{self, Converter},
+    parse_to_s_expr::parse_dsn_to_s_expr,
+    parse_to_struct::parse_s_expr_to_struct,
+};
 
-
-
-
-pub fn parse_end_to_end(dsn_file_content: String)->Result<PcbProblem, String>{
-    let s_expr = parse_dsn_to_s_expr(&dsn_file_content).map_err(|e| format!("Failed to parse DSN: {}", e))?;
+pub fn parse_end_to_end(dsn_file_content: String) -> Result<PcbProblem, String> {
+    let s_expr = parse_dsn_to_s_expr(&dsn_file_content)
+        .map_err(|e| format!("Failed to parse DSN: {}", e))?;
 
     let dsn_struct = parse_s_expr_to_struct(&s_expr)?;
     println!(
@@ -110,7 +115,7 @@ pub fn parse_end_to_end(dsn_file_content: String)->Result<PcbProblem, String>{
     }
 
     let display_format = dsn_to_display(&dsn_struct)?;
-    let extra_info = ExtraInfo{
+    let extra_info = ExtraInfo {
         pad_name_to_trace_clearance: HashMap::new(),
         pad_name_to_trace_width: HashMap::new(),
         net_name_to_source_pad: HashMap::new(),

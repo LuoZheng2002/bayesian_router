@@ -6,7 +6,8 @@ use shared::vec2::FloatVec2;
 
 use crate::{
     dsn_struct::{
-        Boundary, Component, ComponentInst, DsnStruct, Image, Layer, Library, Net, Netclass, Network, PadStack, Pin, Pin2, Placement, PlacementLayer, Resolution, Shape, Structure
+        Boundary, Component, ComponentInst, DsnStruct, Image, Layer, Library, Net, Netclass,
+        Network, PadStack, Pin, Pin2, Placement, PlacementLayer, Resolution, Shape, Structure,
     },
     s_expr::SExpr,
 };
@@ -68,7 +69,10 @@ fn parse_boundary(s_expr: &Vec<SExpr>) -> Result<Boundary, String> {
                 let number = number
                     .parse::<f32>()
                     .map_err(|e| format!("Failed to parse boundary number: {}", e))?;
-                points.push(FloatVec2 { x: prev_num, y: number });
+                points.push(FloatVec2 {
+                    x: prev_num,
+                    y: number,
+                });
                 prev_number = None;
             }
             None => {
@@ -232,7 +236,7 @@ fn parse_placement(s_expr: &Vec<SExpr>) -> Result<Placement, String> {
                 .ok_or("Expected y position to be an atom")?
                 .parse::<f32>()
                 .map_err(|e| format!("Failed to parse y position: {}", e))?;
-            
+
             let placement_layer_string = place_list
                 .get(4)
                 .ok_or("Expected placement layer in place list")?
@@ -242,7 +246,12 @@ fn parse_placement(s_expr: &Vec<SExpr>) -> Result<Placement, String> {
             let placement_layer = match placement_layer_string.as_str() {
                 "front" => PlacementLayer::Front,
                 "back" => PlacementLayer::Back,
-                _ => return Err(format!("Unknown placement layer: {}", placement_layer_string)),
+                _ => {
+                    return Err(format!(
+                        "Unknown placement layer: {}",
+                        placement_layer_string
+                    ));
+                }
             };
 
             let rotation = place_list
@@ -256,10 +265,7 @@ fn parse_placement(s_expr: &Vec<SExpr>) -> Result<Placement, String> {
             // Create the component instance
             let instance = ComponentInst {
                 reference,
-                position: FloatVec2 {
-                    x: x_pos,
-                    y: y_pos,
-                },
+                position: FloatVec2 { x: x_pos, y: y_pos },
                 rotation,
                 placement_layer, // Use the parsed placement layer
             };
@@ -314,7 +320,8 @@ fn parse_image(s_expr: &Vec<SExpr>) -> Result<Image, String> {
                 continue;
             }
             "pin" => {
-                let pad_stack_name = expr_list.get(1)
+                let pad_stack_name = expr_list
+                    .get(1)
                     .ok_or("Expected pad stack name")?
                     .as_atom()
                     .ok_or("Pad stack name must be an atom")?
@@ -322,14 +329,16 @@ fn parse_image(s_expr: &Vec<SExpr>) -> Result<Image, String> {
 
                 let mut next_index: usize = 2;
                 let mut rotation: Deg<f32> = Deg(0.0);
-                if let SExpr::List(pin_expr_list) = &expr_list.get(2)
-                    .ok_or("Expected pin definition")?
+                if let SExpr::List(pin_expr_list) =
+                    &expr_list.get(2).ok_or("Expected pin definition")?
                 {
                     next_index = 3;
-                    let first_item = pin_expr_list[0].as_atom().ok_or(
-                        "Expected rotation as the first item in rotation definition"
-                    )?;
-                    let first_item = first_item.parse::<String>().map_err(|_|"Failed to parse rotation as string")?;
+                    let first_item = pin_expr_list[0]
+                        .as_atom()
+                        .ok_or("Expected rotation as the first item in rotation definition")?;
+                    let first_item = first_item
+                        .parse::<String>()
+                        .map_err(|_| "Failed to parse rotation as string")?;
                     if first_item != "rotate" {
                         return Err(format!("Expected 'rotate', found: {}", first_item));
                     }
@@ -340,20 +349,23 @@ fn parse_image(s_expr: &Vec<SExpr>) -> Result<Image, String> {
                         .map_err(|e| format!("Invalid rotation: {}", e))?;
                     rotation = Deg(rot);
                 }
-                let pin_number = expr_list.get(next_index)
+                let pin_number = expr_list
+                    .get(next_index)
                     .ok_or("Expect pin number, but out of bound")?
                     .as_atom()
                     .ok_or("Pin number must be an atom")?
                     .clone();
                 next_index += 1;
-                let x = expr_list.get(next_index)
+                let x = expr_list
+                    .get(next_index)
                     .ok_or("Expect x coordinate, but out of bound")?
                     .as_atom()
                     .ok_or("X coordinate must be a number")?
                     .parse::<f32>()
                     .map_err(|e| format!("Invalid x coordinate: {}", e))?;
                 next_index += 1;
-                let y = expr_list.get(next_index)
+                let y = expr_list
+                    .get(next_index)
                     .ok_or("Expect y coordinate, but out of bound")?
                     .as_atom()
                     .ok_or("Y coordinate must be a number")?
@@ -365,10 +377,7 @@ fn parse_image(s_expr: &Vec<SExpr>) -> Result<Image, String> {
                     Pin {
                         pad_stack_name,
                         pin_number,
-                        position: FloatVec2 {
-                            x,
-                            y,
-                        },
+                        position: FloatVec2 { x, y },
                         rotation,
                     },
                 );
@@ -476,13 +485,15 @@ fn parse_shape(s_expr: &Vec<SExpr>) -> Result<Shape, String> {
                 vertices,
             })
         }
-        "path" =>{
+        "path" => {
             let aperture_width = shape_type[2]
                 .as_atom()
                 .ok_or("Aperture width must be a number")?
                 .parse::<f32>()
                 .map_err(|e| format!("Invalid aperture width: {}", e))?;
-            Ok(Shape::Circle { diameter: aperture_width })
+            Ok(Shape::Circle {
+                diameter: aperture_width,
+            })
         }
         _ => Err(format!("Unknown shape type: {}", first_item)),
     }

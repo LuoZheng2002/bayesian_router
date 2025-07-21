@@ -2,8 +2,8 @@ use std::cmp::Ordering;
 
 #[derive(Debug, Clone)]
 pub struct BinaryHeapItem<T, U> {
-    pub key: T,     // used for ordering
-    pub value: U,   // not used for ordering
+    pub key: T,   // used for ordering
+    pub value: U, // not used for ordering
 }
 
 // Implement Eq and Ord based on key

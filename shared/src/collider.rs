@@ -1,10 +1,12 @@
 use cgmath::{Rotation, Rotation2};
 
-use crate::{prim_shape::{PrimShape, RectangleShape}, vec2::FloatVec2};
-
+use crate::{
+    prim_shape::{PrimShape, RectangleShape},
+    vec2::FloatVec2,
+};
 
 #[derive(Debug, Clone)]
-pub struct CircleCollider{
+pub struct CircleCollider {
     pub position: FloatVec2,
     pub diameter: f32,
 }
@@ -15,13 +17,13 @@ pub struct CircleCollider{
 pub struct PolygonCollider(pub Vec<FloatVec2>);
 
 #[derive(Debug, Clone)]
-pub struct BorderCollider{
+pub struct BorderCollider {
     pub point_on_border: FloatVec2,
     pub normal: FloatVec2,
 }
 
 #[derive(Debug, Clone)]
-pub enum Collider{
+pub enum Collider {
     Circle(CircleCollider),
     Polygon(PolygonCollider),
     Border(BorderCollider),
@@ -139,7 +141,7 @@ impl Collider {
         let mut closest_vertex = verts[0];
 
         for &v in verts {
-            let dist_sq = (v- circle.position).magnitude2();
+            let dist_sq = (v - circle.position).magnitude2();
             if dist_sq < min_distance_sq {
                 min_distance_sq = dist_sq;
                 closest_vertex = v;
@@ -162,7 +164,7 @@ impl Collider {
         // Check axes from polygon 1
         let poly1verts = &poly1.0;
         for i in 0..poly1verts.len() {
-            if poly1verts.len() == 2 && i == 1{
+            if poly1verts.len() == 2 && i == 1 {
                 break; // Skip the second vertex for lines
             }
             let edge = poly1verts[(i + 1) % poly1verts.len()] - poly1verts[i];
@@ -178,7 +180,7 @@ impl Collider {
         // Check axes from polygon 2
         let poly2verts = &poly2.0;
         for i in 0..poly2verts.len() {
-            if poly2verts.len() == 2 && i == 1{
+            if poly2verts.len() == 2 && i == 1 {
                 break; // Skip the second vertex for lines
             }
             let edge = poly2verts[(i + 1) % poly2verts.len()] - poly2verts[i];
@@ -204,38 +206,25 @@ impl Collider {
     fn circle_border(circle: &CircleCollider, border: &BorderCollider) -> bool {
         // project the circle center onto the border normal
         let radius = circle.diameter / 2.0;
-        let (_circle_min, circle_max) = Self::project_circle(circle.position, radius, border.normal);
+        let (_circle_min, circle_max) =
+            Self::project_circle(circle.position, radius, border.normal);
         let border_projection = border.point_on_border.dot(border.normal.normalize());
         // check if the distance from the border to the circle center is less than the radius
         circle_max > border_projection
     }
     pub fn collides_with(&self, other: &Collider) -> bool {
         match (self, other) {
-            (Collider::Circle(c1), Collider::Circle(c2)) => {
-                Self::circle_circle(c1, c2)
+            (Collider::Circle(c1), Collider::Circle(c2)) => Self::circle_circle(c1, c2),
+            (Collider::Circle(c), Collider::Polygon(p)) => Self::polygon_circle(p, c),
+            (Collider::Polygon(p), Collider::Circle(c)) => Self::polygon_circle(p, c),
+            (Collider::Polygon(p1), Collider::Polygon(p2)) => Self::polygons_collide(p1, p2),
+            (Collider::Polygon(p), Collider::Border(b)) => Self::polygon_border(p, b),
+            (Collider::Circle(c), Collider::Border(b)) => Self::circle_border(c, b),
+            (Collider::Border(b), Collider::Polygon(p)) => Self::polygon_border(p, b),
+            (Collider::Border(b), Collider::Circle(c)) => Self::circle_border(c, b),
+            (Collider::Border(_), Collider::Border(_)) => {
+                panic!("Border with border collision is not defined")
             }
-            (Collider::Circle(c), Collider::Polygon(p)) => {
-                Self::polygon_circle(p, c)
-            }
-            (Collider::Polygon(p), Collider::Circle(c)) => {
-                Self::polygon_circle(p, c)
-            }
-            (Collider::Polygon(p1), Collider::Polygon(p2)) => {
-                Self::polygons_collide(p1, p2)
-            }
-            (Collider::Polygon(p), Collider::Border(b)) => {
-                Self::polygon_border(p, b)
-            }
-            (Collider::Circle(c), Collider::Border(b)) => {
-                Self::circle_border(c, b)
-            }
-            (Collider::Border(b), Collider::Polygon(p)) => {
-                Self::polygon_border(p, b)
-            }
-            (Collider::Border(b), Collider::Circle(c)) => {
-                Self::circle_border(c, b)
-            }
-            (Collider::Border(_), Collider::Border(_)) => panic!("Border with border collision is not defined"),
         }
     }
 }
