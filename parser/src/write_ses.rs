@@ -42,21 +42,22 @@ pub struct ViaSES {
 
 impl ViaSES {
     fn to_ses_string(&self, layers: &[String]) -> String {
+        let shape = &self.shape;
         let dia_int = (self.diameter * 10000.0).round() as i32;
         let mut s = format!("      (padstack \"{}\"\n", self.name);
 
         if self.through_hole {
             for layer in layers {
                 s += &format!(
-                    "        (shape\n          (circle {} {} 0 0)\n        )\n",
-                    layer, dia_int
+                    "        (shape\n          ({} {} {} 0 0)\n        )\n",
+                    shape, layer, dia_int
                 );
             }
         } else {
             let layer = &layers[0];
             s += &format!(
-                "        (shape\n          (circle {} {} 0 0)\n        )\n",
-                layer, dia_int
+                "        (shape\n          ({} {} {} 0 0)\n        )\n",
+                shape, layer, dia_int
             );
         }
 
@@ -93,8 +94,13 @@ fn extract_fixed_vec2(v: &FixedVec2) -> (f32, f32) {
     (v.x.to_num::<f32>(), v.y.to_num::<f32>())
 }
 
-fn find_via_name(via: &Via, dsn: &DsnStruct) -> String {
-    todo!("Implement logic to find via name based on the dsn and trace information");
+fn find_via_name(via: &Via, dsn: &DsnStruct, all_via: &Vec<ViaSES>) -> String {
+    for via_ses in all_via {
+        if via_ses.diameter == via.diameter {
+            return via_ses.name.clone();
+        }
+    }
+    "UNKNOWN_VIA".to_string()
 }
 
 fn generate_network<W: Write>(
@@ -102,6 +108,7 @@ fn generate_network<W: Write>(
     dsn: &DsnStruct,
     solution: &PcbSolution,
     layers: &Vec<String>,
+    vias: &Vec<ViaSES>,
 ) -> Result<()> {
     // This function will generate the network information based on the PcbProblem and PcbSolution
     // The implementation will depend on the specific requirements of the network format
@@ -117,7 +124,7 @@ fn generate_network<W: Write>(
         for trace in traces {
             for via in &trace.trace_path.vias {
                 let (x, y) = extract_fixed_vec2(&via.position);
-                let via_name = find_via_name(&via, &dsn);
+                let via_name = find_via_name(&via, &dsn, &vias);
                 writeln!(file, "    (via {} {} {})", via_name, x, y)?;
             }
             for segment in &trace.trace_path.segments {
@@ -171,7 +178,7 @@ pub fn write_ses(dsn: &DsnStruct, solution: &PcbSolution, output: &str) -> Resul
     // via
     writeln!(ses, "    (library_out")?;
     let vias = via_info(&dsn);
-    for via in vias {
+    for via in &vias {
         let via_str = via.to_ses_string(&layer_names);
         write!(ses, "{}", via_str)?;
     }
@@ -180,7 +187,7 @@ pub fn write_ses(dsn: &DsnStruct, solution: &PcbSolution, output: &str) -> Resul
     // net
     writeln!(ses, "    (network_out")?;
 
-    generate_network(&mut ses, &dsn, &solution, &layer_names)?;
+    generate_network(&mut ses, &dsn, &solution, &layer_names, &vias)?;
     writeln!(ses, "  )")?;
     writeln!(ses, ")")?;
     Ok(())
