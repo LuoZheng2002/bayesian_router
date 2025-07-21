@@ -9,9 +9,7 @@ use std::{
 use rand::distr::{Distribution, weighted::WeightedIndex};
 use shared::{
     collider::Collider, deterministic_rand::create_deterministic_rng, hyperparameters::{
-        CONSTANT_LEARNING_RATE, ITERATION_TO_NUM_TRACES, ITERATION_TO_PRIOR_PROBABILITY,
-        LINEAR_LEARNING_RATE, MAX_GENERATION_ATTEMPTS, NEXT_ITERATION_TO_REMAINING_PROBABILITY,
-        OPPORTUNITY_COST_WEIGHT, SCORE_WEIGHT,
+        CONSTANT_LEARNING_RATE, ITERATION_TO_NUM_TRACES, ITERATION_TO_PRIOR_PROBABILITY, LINEAR_LEARNING_RATE, MAX_GENERATION_ATTEMPTS, NEXT_ITERATION_TO_REMAINING_PROBABILITY, OPPORTUNITY_COST_WEIGHT, SAMPLE_ITERATIONS, SCORE_WEIGHT
     }, pcb_problem::{Connection, ConnectionID, FixedTrace, NetName, PcbProblem}, pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel}, prim_shape::PrimShape, trace_path::{TraceAnchors, TracePath}, vec2::{FixedPoint, FixedVec2}
 };
 
@@ -115,7 +113,7 @@ impl ProbaModel {
 
         // sample and then update posterior
         // to do: specify iteration number
-        for j in 0..2 {
+        for j in 0..SAMPLE_ITERATIONS {
             println!("Sampling new traces for iteration {}", j + 1);
             proba_model.sample_new_traces(problem, pcb_render_model.clone());
             println!("Done sampling new traces");
