@@ -94,13 +94,13 @@ fn extract_fixed_vec2(v: &FixedVec2) -> (f32, f32) {
     (v.x.to_num::<f32>(), v.y.to_num::<f32>())
 }
 
-fn find_via_name(via: &Via, dsn: &DsnStruct, all_via: &Vec<ViaSES>) -> String {
-    for via_ses in all_via {
-        if via_ses.diameter == via.diameter {
-            return via_ses.name.clone();
+fn find_via_name(netname: &String, dsn: &DsnStruct) -> Option<String> {
+    for netclass in dsn.network.netclasses.values() {
+        if netclass.net_names.contains(netname) {
+            return Some(netclass.via_name.clone());
         }
     }
-    "UNKNOWN_VIA".to_string()
+    None
 }
 
 fn generate_network<W: Write>(
@@ -120,11 +120,11 @@ fn generate_network<W: Write>(
 
     for (net_name, traces) in nets {
         writeln!(file, "  (net \"{}\")", net_name).unwrap();
+        let via_name = find_via_name(&net_name, &dsn).unwrap_or("default_via".to_string());
 
         for trace in traces {
             for via in &trace.trace_path.vias {
                 let (x, y) = extract_fixed_vec2(&via.position);
-                let via_name = find_via_name(&via, &dsn, &vias);
                 writeln!(file, "    (via {} {} {})", via_name, x, y)?;
             }
             for segment in &trace.trace_path.segments {
@@ -160,7 +160,7 @@ pub fn write_ses(dsn: &DsnStruct, solution: &PcbSolution, output: &str) -> Resul
     writeln!(ses, "(session {}.ses)", output)?;
     writeln!(ses, "  (base_design {}.dsn)", output)?;
 
-    generate_placement(&mut ses, &dsn);
+    generate_placement(&mut ses, &dsn)?;
 
     writeln!(ses, "  (was_is")?;
     writeln!(ses, "  )")?;
