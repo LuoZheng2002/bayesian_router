@@ -14,16 +14,16 @@ use shared::pcb_render_model::PcbRenderModel;
 
 pub fn working_thread_fn(pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>) {
     println!("Working thread started");
-    // let pcb_problem = pcb_problem2();
+    let pcb_problem = pcb_problem2();
 
-    let dsn_file_content = std::fs::read_to_string("vimdrones_esc_development_board.dsn").unwrap();
-    let pcb_problem = match parse_end_to_end(dsn_file_content) {
-        Ok(problem) => problem,
-        Err(e) => {
-            println!("Failed to parse DSN file: {}", e);
-            exit(-1);
-        }
-    };
+    // let dsn_file_content = std::fs::read_to_string("vimdrones_esc_development_board.dsn").unwrap();
+    // let pcb_problem = match parse_end_to_end(dsn_file_content) {
+    //     Ok(problem) => problem,
+    //     Err(e) => {
+    //         println!("Failed to parse DSN file: {}", e);
+    //         exit(-1);
+    //     }
+    // };
     let result = solve_pcb_problem(&pcb_problem, pcb_render_model.clone());
     match result {
         Ok(_) => {
