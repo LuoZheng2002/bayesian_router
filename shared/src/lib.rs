@@ -10,3 +10,4 @@ pub mod pcb_render_model;
 pub mod prim_shape;
 pub mod trace_path;
 pub mod vec2;
+pub mod octile_distance;

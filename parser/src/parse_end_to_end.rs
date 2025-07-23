@@ -11,11 +11,9 @@ use crate::{
     parse_to_struct::parse_s_expr_to_struct,
 };
 
-pub fn parse_struct_to_end(dsn_struct: &DsnStruct)-> Result<PcbProblem, String> {
+pub fn parse_struct_to_end(dsn_struct: &DsnStruct) -> Result<PcbProblem, String> {
     let display_format = dsn_to_display(dsn_struct)?;
     let extra_info = ExtraInfo {
-        pad_name_to_trace_clearance: HashMap::new(),
-        pad_name_to_trace_width: HashMap::new(),
         net_name_to_source_pad: HashMap::new(),
     };
     let pcb_problem = Converter::convert(&display_format, &extra_info)?;
@@ -134,8 +132,6 @@ pub fn parse_end_to_end(dsn_file_content: String) -> Result<PcbProblem, String> 
     */
     let display_format = dsn_to_display(&dsn_struct)?;
     let extra_info = ExtraInfo {
-        pad_name_to_trace_clearance: HashMap::new(),
-        pad_name_to_trace_width: HashMap::new(),
         net_name_to_source_pad: HashMap::new(),
     };
     let pcb_problem = Converter::convert(&display_format, &extra_info)?;

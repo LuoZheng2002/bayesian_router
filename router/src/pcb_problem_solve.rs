@@ -61,24 +61,11 @@ pub fn solve_pcb_problem(
         let mut net_name_to_color: HashMap<NetName, ColorFloat3> = HashMap::new();
         for (_, net_info) in problem.nets.iter() {
             net_name_to_color.insert(net_info.net_name.clone(), net_info.color);
-            // add source pad
-            let source_renderables = net_info
-                .source
-                .to_renderables(net_info.color.to_float4(1.0));
-            let source_clearance_renderables = net_info
-                .source
-                .to_clearance_renderables(net_info.color.to_float4(0.5));
-            pad_shape_renderables.extend(source_renderables);
-            pad_shape_renderables.extend(source_clearance_renderables);
-            for (_, connection) in net_info.connections.iter() {
-                let sink_renderables = connection
-                    .sink
-                    .to_renderables(net_info.color.to_float4(1.0));
-                let sink_clearance_renderables = connection
-                    .sink
-                    .to_clearance_renderables(net_info.color.to_float4(0.5));
-                pad_shape_renderables.extend(sink_renderables);
-                pad_shape_renderables.extend(sink_clearance_renderables);
+            for pad in net_info.pads.values(){
+                let pad_renderables = pad.to_renderables(net_info.color.to_float4(1.0));
+                let pad_clearance_renderables = pad.to_clearance_renderables(net_info.color.to_float4(1.0));
+                pad_shape_renderables.extend(pad_renderables);
+                pad_shape_renderables.extend(pad_clearance_renderables);
             }
         }
         for fixed_trace in node.fixed_traces.values() {

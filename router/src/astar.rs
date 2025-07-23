@@ -19,6 +19,7 @@ use shared::{
     binary_heap_item::BinaryHeapItem,
     collider::{BorderCollider, Collider},
     hyperparameters::{ASTAR_STRIDE, ESTIMATE_COEFFICIENT, MAX_TRIALS, VIA_COST},
+    octile_distance::octile_distance_fixed,
     pad::PadLayer,
     pcb_render_model::{
         self, PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel,
@@ -70,7 +71,11 @@ impl AStarModel {
             }
         }
     }
-    pub fn calculate_border_colliders(width: f32, height: f32, center: FloatVec2) -> Rc<Vec<Collider>> {
+    pub fn calculate_border_colliders(
+        width: f32,
+        height: f32,
+        center: FloatVec2,
+    ) -> Rc<Vec<Collider>> {
         let left_border = BorderCollider {
             point_on_border: FloatVec2::new(center.x - width / 2.0, 0.0),
             normal: FloatVec2::new(-1.0, 0.0),
@@ -276,13 +281,6 @@ impl AStarModel {
             return true; // collision with the border
         }
         false // no collision
-    }
-    fn octile_distance(start: &FixedVec2, end: &FixedVec2) -> f64 {
-        let start = start.to_float();
-        let end = end.to_float();
-        let dx = (end.x - start.x).abs() as f64;
-        let dy = (end.y - start.y).abs() as f64;
-        f64::max(dx, dy) + (f64::sqrt(2.0) - 1.0) * f64::min(dx, dy)
     }
 
     fn is_grid_point(&self, position: &FixedVec2) -> bool {
@@ -1009,7 +1007,7 @@ impl AStarModel {
             BinaryHeap::new();
 
         let start_estimated_cost =
-            Self::octile_distance(&self.start, &self.end) * ESTIMATE_COEFFICIENT;
+            octile_distance_fixed(self.start, self.end) * ESTIMATE_COEFFICIENT;
         for layer in self.start_layers.get_iter(self.num_layers) {
             let start_node = AstarNode {
                 position: self.start,
@@ -1115,8 +1113,8 @@ impl AStarModel {
                     };
                     let actual_cost = current_node.actual_cost + length + via_cost;
                     let actual_length = current_node.actual_length + length;
-                    let estimated_cost = AStarModel::octile_distance(&end_position, &self.end)
-                        * ESTIMATE_COEFFICIENT;
+                    let estimated_cost =
+                        octile_distance_fixed(end_position, self.end) * ESTIMATE_COEFFICIENT;
                     let total_cost = actual_cost + estimated_cost;
                     let new_node = AstarNode {
                         position: end_position,

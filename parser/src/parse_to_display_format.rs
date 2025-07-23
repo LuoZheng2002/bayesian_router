@@ -31,10 +31,6 @@ pub struct DisplayFormat {
 }
 
 pub struct ExtraInfo {
-    // overwrite options, may not contain all pads
-    pub pad_name_to_trace_width: HashMap<PadName, f32>,
-    // overwrite options, may not contain all pads
-    pub pad_name_to_trace_clearance: HashMap<PadName, f32>,
     // for nets with 3 or more pads, choose the pad specified below as the source pad. If it's not specified, generate a warning and choose the first one.
     pub net_name_to_source_pad: HashMap<NetName, PadName>, // net name to source pad name
 }
