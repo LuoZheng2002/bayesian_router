@@ -2,7 +2,7 @@ use fixed::traits::Fixed;
 // use crate::block_or_sleep::{block_or_sleep, block_thread};
 use shared::{
     binary_heap_item::BinaryHeapItem,
-    hyperparameters::{ASTAR_STRIDE, DISPLAY_OPTIMIZATION},
+    hyperparameters::{ASTAR_STRIDE, DISPLAY_OPTIMIZATION, OPTIMIZATION_PRO},
     pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel},
     prim_shape::{CircleShape, PrimShape, RectangleShape},
     trace_path::{Direction, TraceAnchor, TraceAnchors, TracePath, TraceSegment, Via},
@@ -172,11 +172,16 @@ pub fn optimize_path(
         return trace_path.clone();
     }
     let mut optflag = true;
+    let mut optcnt = 2;
+    if OPTIMIZATION_PRO{
+        optcnt = 0;
+    }
     let mut optimized = path.clone();
     let mut total_length = trace_path.total_length;
 
-    while optflag {
+    while optflag && optcnt < 3 {
         optflag = false;
+        optcnt += 1;
         let mut success = false;
         let mut i = 0;
         while i < optimized.len() - 2 {
@@ -282,197 +287,198 @@ pub fn optimize_path(
             }
         }
 
-        i = 0;
-        success = false;
-        while i < optimized.len() - 3 {
-            // Check for parallel segments that can be optimized
-            // trace shifting
-            let p0 = optimized[i].position;
-            let p1 = optimized[i + 1].position;
-            let p2 = optimized[i + 2].position;
-            let p3 = optimized[i + 3].position;
+        if OPTIMIZATION_PRO{
+            i = 0;
+            success = false;
+            while i < optimized.len() - 3 {
+                // Check for parallel segments that can be optimized
+                // trace shifting
+                let p0 = optimized[i].position;
+                let p1 = optimized[i + 1].position;
+                let p2 = optimized[i + 2].position;
+                let p3 = optimized[i + 3].position;
 
-            if optimized[i].end_layer == optimized[i + 1].start_layer
-                && optimized[i + 1].start_layer == optimized[i + 1].end_layer
-                && optimized[i + 1].end_layer == optimized[i + 2].start_layer
-                && optimized[i + 2].start_layer == optimized[i + 2].end_layer
-                && optimized[i + 2].end_layer == optimized[i + 3].start_layer
-            {
-                let my_layer = optimized[i].end_layer;
-                let dir0 =  if i == 0 {None} else {Some(Direction::from_points(optimized[i - 1].position, p0).unwrap())};
-                let dir1 = Direction::from_points(p0, p1).unwrap();
-                let dir2 = Direction::from_points(p1, p2).unwrap();
-                let dir3 = Direction::from_points(p2, p3).unwrap();
-                let dir4 = if i == optimized.len() - 4 {None} else {Some(Direction::from_points(p3, optimized[i + 4].position).unwrap())};
+                if optimized[i].end_layer == optimized[i + 1].start_layer
+                    && optimized[i + 1].start_layer == optimized[i + 1].end_layer
+                    && optimized[i + 1].end_layer == optimized[i + 2].start_layer
+                    && optimized[i + 2].start_layer == optimized[i + 2].end_layer
+                    && optimized[i + 2].end_layer == optimized[i + 3].start_layer
+                {
+                    let my_layer = optimized[i].end_layer;
+                    let dir0 =  if i == 0 {None} else {Some(Direction::from_points(optimized[i - 1].position, p0).unwrap())};
+                    let dir1 = Direction::from_points(p0, p1).unwrap();
+                    let dir2 = Direction::from_points(p1, p2).unwrap();
+                    let dir3 = Direction::from_points(p2, p3).unwrap();
+                    let dir4 = if i == optimized.len() - 4 {None} else {Some(Direction::from_points(p3, optimized[i + 4].position).unwrap())};
 
-                if dir1 == dir3 && (dir0 == None || !is_convex(dir0.unwrap(), dir1, dir2)) && (dir4 == None || !is_convex(dir2, dir3, dir4.unwrap())){
-                    // debug
-                    if DISPLAY_OPTIMIZATION {
-                        println!(
-                            "Optimizing segments {}-{} and {}-{} due to parallelism",
-                            i,
-                            i + 1,
-                            i + 2,
-                            i + 3
-                        );
-                    }
-                    let new_point1 = FixedVec2 {
-                        x: p0.x + p2.x - p1.x,
-                        y: p0.y + p2.y - p1.y,
-                    };
-                    let new_point2 = FixedVec2 {
-                        x: p3.x - p2.x + p1.x,
-                        y: p3.y - p2.y + p1.y,
-                    };
+                    if dir1 == dir3 && (dir0 == None || !is_convex(dir0.unwrap(), dir1, dir2)) && (dir4 == None || !is_convex(dir2, dir3, dir4.unwrap())){
+                        // debug
+                        if DISPLAY_OPTIMIZATION {
+                            println!(
+                                "Optimizing segments {}-{} and {}-{} due to parallelism",
+                                i,
+                                i + 1,
+                                i + 2,
+                                i + 3
+                            );
+                        }
+                        let new_point1 = FixedVec2 {
+                            x: p0.x + p2.x - p1.x,
+                            y: p0.y + p2.y - p1.y,
+                        };
+                        let new_point2 = FixedVec2 {
+                            x: p3.x - p2.x + p1.x,
+                            y: p3.y - p2.y + p1.y,
+                        };
 
-                    let flag1 =
-                        !check_collision(p0, new_point1, trace_width, trace_clearance, my_layer)
-                            && !check_collision(new_point1, p2, trace_width, trace_clearance, my_layer);
-                    let flag2 =
-                        !check_collision(p1, new_point2, trace_width, trace_clearance, my_layer)
-                            && !check_collision(new_point2, p3, trace_width, trace_clearance, my_layer);
+                        let flag1 =
+                            !check_collision(p0, new_point1, trace_width, trace_clearance, my_layer)
+                                && !check_collision(new_point1, p2, trace_width, trace_clearance, my_layer);
+                        let flag2 =
+                            !check_collision(p1, new_point2, trace_width, trace_clearance, my_layer)
+                                && !check_collision(new_point2, p3, trace_width, trace_clearance, my_layer);
 
-                    if flag1 {
-                        assert!(
-                            Direction::is_two_points_valid_direction(new_point1, p2),
-                            "New positions should form a valid direction"
-                        );
-                        assert!(
-                            Direction::is_two_points_valid_direction(p0, new_point1),
-                            "New positions should form a valid direction"
-                        );
-                        optimized[i + 1].position = new_point1;
-                        optimized.remove(i + 2);
-                        success = true;
-                        optflag = true;
-                    } else if flag2 {
-                        assert!(
-                            Direction::is_two_points_valid_direction(new_point2, p3),
-                            "New positions should form a valid direction"
-                        );
-                        assert!(
-                            Direction::is_two_points_valid_direction(p1, new_point2),
-                            "New positions should form a valid direction"
-                        );
-                        optimized[i + 2].position = new_point2;
-                        optimized.remove(i + 1);
-                        success = true;
-                        optflag = true;
-                    }
-                }
-            }
-            i += 1;
-            if i >= optimized.len() - 3 {
-                if success {
-                    i = 0; // restart from the beginning if any optimization was made
-                    success = false;
-                }
-            }
-        }
-
-
-        i = 1;
-        while i < optimized.len() - 2 {
-            // tight wrapping
-            let p0 = optimized[i - 1].position;
-            let p1 = optimized[i].position;
-            let p2 = optimized[i + 1].position;
-            let p3 = optimized[i + 2].position;
-
-            if optimized[i - 1].end_layer == optimized[i].start_layer
-                && optimized[i].start_layer == optimized[i].end_layer
-                && optimized[i].end_layer == optimized[i + 1].start_layer
-                && optimized[i + 1].start_layer == optimized[i + 1].end_layer
-                && optimized[i + 1].end_layer == optimized[i + 2].start_layer
-            {
-                let my_layer = optimized[i - 1].end_layer;
-                let dir1 = Direction::from_points(p0, p1).unwrap();
-                let dir2 = Direction::from_points(p1, p2).unwrap();
-                let dir3 = Direction::from_points(p2, p3).unwrap();
-
-                if is_convex(dir1, dir2, dir3) {
-                    let len1 = FixedPoint::max((p1 - p0).x.abs(), (p1 - p0).y.abs());
-                    let len3 = FixedPoint::max((p3 - p2).x.abs(), (p3 - p2).y.abs());
-                    let max_len =
-                        FixedPoint::min(len1, len3);
-                    let num_steps = (max_len / FixedPoint::DELTA / FixedPoint::from_num(2.0))
-                        .ceil()
-                        .to_num::<usize>();
-                    if DISPLAY_OPTIMIZATION {
-                        println!(
-                            "Enter is_convex: {:?} -> {:?} -> {:?}, max_len: {}, num_steps: {}",
-                            (p0, p1),
-                            (p1, p2),
-                            (p2, p3),
-                            max_len,
-                            num_steps
-                        );
-                    }
-                    for step_idx in 0..=num_steps {
-                        let step = FixedPoint::from_num(step_idx)
-                            * FixedPoint::DELTA
-                            * FixedPoint::from_num(2.0);
-                        let step = FixedPoint::min(step, max_len);
-                        let new_point1 = p1 - dir1.to_fixed_vec2(max_len - step);
-                        let new_point2 = p2 + dir3.to_fixed_vec2(max_len - step);
-                        if step == max_len {break;}
-                        assert!(
-                            Direction::is_two_points_valid_direction(new_point1, new_point2),
-                            "New positions should form a valid direction"
-                        );
-
-                        if (p0 == new_point1
-                            || !check_collision(p0, new_point1, trace_width, trace_clearance, my_layer))
-                            && !check_collision(
-                                new_point1,
-                                new_point2,
-                                trace_width,
-                                trace_clearance,
-                                my_layer,
-                            )
-                            && (new_point2 == p3
-                                || !check_collision(
-                                    new_point2,
-                                    p3,
-                                    trace_width,
-                                    trace_clearance,
-                                    my_layer,
-                                ))
-                        {
-                            total_length = total_length
-                                - ((p1 - p0).length().to_num::<f64>()
-                                    + (p3 - p2).length().to_num::<f64>()
-                                    + (p2 - p1).length().to_num::<f64>())
-                                + (new_point1 - p0).length().to_num::<f64>()
-                                + (p3 - new_point2).length().to_num::<f64>()
-                                + (new_point2 - new_point1).length().to_num::<f64>();
-                            optimized[i].position = new_point1;
-                            optimized[i + 1].position = new_point2;
-                            if new_point2 == p3 {
-                                // If we reached the maximum length, we can remove the redundant points
-                                optimized.remove(i + 2);
-                                i -= 1;
-                            }
-                            if new_point1 == p0 {
-                                optimized.remove(i - 1);
-                                i -= 1;
-                            }
-                            if DISPLAY_OPTIMIZATION {
-                                println!(
-                                    "Optimized points: {:?} -> {:?}",
-                                    (p1, p2),
-                                    (new_point1, new_point2)
-                                );
-                            }
+                        if flag1 {
+                            assert!(
+                                Direction::is_two_points_valid_direction(new_point1, p2),
+                                "New positions should form a valid direction"
+                            );
+                            assert!(
+                                Direction::is_two_points_valid_direction(p0, new_point1),
+                                "New positions should form a valid direction"
+                            );
+                            optimized[i + 1].position = new_point1;
+                            optimized.remove(i + 2);
+                            success = true;
                             optflag = true;
-                            break;
+                        } else if flag2 {
+                            assert!(
+                                Direction::is_two_points_valid_direction(new_point2, p3),
+                                "New positions should form a valid direction"
+                            );
+                            assert!(
+                                Direction::is_two_points_valid_direction(p1, new_point2),
+                                "New positions should form a valid direction"
+                            );
+                            optimized[i + 2].position = new_point2;
+                            optimized.remove(i + 1);
+                            success = true;
+                            optflag = true;
                         }
                     }
                 }
+                i += 1;
+                if i >= optimized.len() - 3 {
+                    if success {
+                        i = 0; // restart from the beginning if any optimization was made
+                        success = false;
+                    }
+                }
             }
-            i += 1;
-        }
 
+
+            i = 1;
+            while i < optimized.len() - 2 {
+                // tight wrapping
+                let p0 = optimized[i - 1].position;
+                let p1 = optimized[i].position;
+                let p2 = optimized[i + 1].position;
+                let p3 = optimized[i + 2].position;
+
+                if optimized[i - 1].end_layer == optimized[i].start_layer
+                    && optimized[i].start_layer == optimized[i].end_layer
+                    && optimized[i].end_layer == optimized[i + 1].start_layer
+                    && optimized[i + 1].start_layer == optimized[i + 1].end_layer
+                    && optimized[i + 1].end_layer == optimized[i + 2].start_layer
+                {
+                    let my_layer = optimized[i - 1].end_layer;
+                    let dir1 = Direction::from_points(p0, p1).unwrap();
+                    let dir2 = Direction::from_points(p1, p2).unwrap();
+                    let dir3 = Direction::from_points(p2, p3).unwrap();
+
+                    if is_convex(dir1, dir2, dir3) {
+                        let len1 = FixedPoint::max((p1 - p0).x.abs(), (p1 - p0).y.abs());
+                        let len3 = FixedPoint::max((p3 - p2).x.abs(), (p3 - p2).y.abs());
+                        let max_len =
+                            FixedPoint::min(len1, len3);
+                        let num_steps = (max_len / FixedPoint::DELTA / FixedPoint::from_num(2.0))
+                            .ceil()
+                            .to_num::<usize>();
+                        if DISPLAY_OPTIMIZATION {
+                            println!(
+                                "Enter is_convex: {:?} -> {:?} -> {:?}, max_len: {}, num_steps: {}",
+                                (p0, p1),
+                                (p1, p2),
+                                (p2, p3),
+                                max_len,
+                                num_steps
+                            );
+                        }
+                        for step_idx in 0..=num_steps {
+                            let step = FixedPoint::from_num(step_idx)
+                                * FixedPoint::DELTA
+                                * FixedPoint::from_num(2.0);
+                            let step = FixedPoint::min(step, max_len);
+                            let new_point1 = p1 - dir1.to_fixed_vec2(max_len - step);
+                            let new_point2 = p2 + dir3.to_fixed_vec2(max_len - step);
+                            if step == max_len {break;}
+                            assert!(
+                                Direction::is_two_points_valid_direction(new_point1, new_point2),
+                                "New positions should form a valid direction"
+                            );
+
+                            if (p0 == new_point1
+                                || !check_collision(p0, new_point1, trace_width, trace_clearance, my_layer))
+                                && !check_collision(
+                                    new_point1,
+                                    new_point2,
+                                    trace_width,
+                                    trace_clearance,
+                                    my_layer,
+                                )
+                                && (new_point2 == p3
+                                    || !check_collision(
+                                        new_point2,
+                                        p3,
+                                        trace_width,
+                                        trace_clearance,
+                                        my_layer,
+                                    ))
+                            {
+                                total_length = total_length
+                                    - ((p1 - p0).length().to_num::<f64>()
+                                        + (p3 - p2).length().to_num::<f64>()
+                                        + (p2 - p1).length().to_num::<f64>())
+                                    + (new_point1 - p0).length().to_num::<f64>()
+                                    + (p3 - new_point2).length().to_num::<f64>()
+                                    + (new_point2 - new_point1).length().to_num::<f64>();
+                                optimized[i].position = new_point1;
+                                optimized[i + 1].position = new_point2;
+                                if new_point2 == p3 {
+                                    // If we reached the maximum length, we can remove the redundant points
+                                    optimized.remove(i + 1);
+                                    i -= 1;
+                                }
+                                if new_point1 == p0 {
+                                    optimized.remove(i);
+                                    i -= 1;
+                                }
+                                if DISPLAY_OPTIMIZATION {
+                                    println!(
+                                        "Optimized points: {:?} -> {:?}",
+                                        (p1, p2),
+                                        (new_point1, new_point2)
+                                    );
+                                }
+                                optflag = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                i += 1;
+            }
+        }
 
         // i = 0;
         // success = false;
