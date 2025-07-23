@@ -231,7 +231,8 @@ impl ProbaModel {
         }
 
         let border_colliders = AStarModel::calculate_border_colliders(problem.width, problem.height, problem.center);
-
+        
+        let sample_cnt = 0;
         // the outer loop for generating the dijkstra model
         for (net_name, net_info) in problem.nets.iter() {
             // collect connections that are not in this net
@@ -283,6 +284,9 @@ impl ProbaModel {
                 )
                 .as_str(),
             );
+
+            // in this while loop, we will generate obstacles f            
+            
             // let mut connection_to_visited_traces: HashMap<ConnectionID, Vec<TracePath>> =
             //     HashMap::new();
             while num_generation_attempts < MAX_GENERATION_ATTEMPTS
@@ -582,10 +586,14 @@ impl ProbaModel {
                     }
 
                     // prepare for the a star model
-                    let start = net_info.source.position.to_fixed().to_nearest_even_even();
-                    let end = connection.sink.position.to_fixed().to_nearest_even_even();
-                    let start_layers = net_info.source.pad_layer;
-                    let end_layers = connection.sink.pad_layer;
+                    // let start = net_info.source.position.to_fixed().to_nearest_even_even();
+                    // let end = connection.sink.position.to_fixed().to_nearest_even_even();
+                    let start_pad = net_info.pads[&connection.start_pad];
+                    let end_pad = net_info.pads[&connection.end_pad];
+                    let start = start_pad.position.to_fixed().to_nearest_even_even();
+                    let end = end_pad.position.to_fixed().to_nearest_even_even();
+                    let start_layers = start_pad.pad_layer;
+                    let end_layers = end_pad.pad_layer;
                     let astar_model = AStarModel {
                         width: problem.width,
                         height: problem.height,
@@ -599,12 +607,13 @@ impl ProbaModel {
                         start_layers,
                         end_layers,
                         num_layers: problem.num_layers,
-                        trace_width: connection.sink_trace_width,
-                        trace_clearance: connection.sink_trace_clearance,
+                        trace_width: net_info.trace_width,
+                        trace_clearance: net_info.trace_clearance,
                         via_diameter: net_info.via_diameter,
                         border_colliders_cache: RefCell::new(None), // Cache for border points, initialized to None
                         border_shapes_cache: RefCell::new(None), // Cache for border shapes, initialized to None
                     };
+                    sample_cnt += 1;
                     // run A* algorithm to find a path
                     let astar_result = astar_model.run(pcb_render_model.clone());
                     let astar_result = match astar_result {
@@ -649,6 +658,8 @@ impl ProbaModel {
                 }
             }
         }
+        println!("sample_cnt = {}", sample_cnt);
+
         // add the new traces to the model
         for proba_trace in new_proba_traces {
             let proba_trace_id = proba_trace.proba_trace_id;
@@ -769,15 +780,14 @@ impl ProbaModel {
         let mut pad_shape_renderables: Vec<ShapeRenderable> = Vec::new();
         let mut other_shape_renderables: Vec<ShapeRenderable> = Vec::new();
         for (_, net_info) in problem.nets.iter() {
-            // add source pad
-            let source_renderables = net_info
-                .source
-                .to_renderables(net_info.color.to_float4(1.0));
-            let source_clearance_renderables = net_info
-                .source
-                .to_clearance_renderables(net_info.color.to_float4(0.5));
-            pad_shape_renderables.extend(source_renderables);
-            pad_shape_renderables.extend(source_clearance_renderables);
+            // add all pads in a net
+            let net_color = net_info.color.to_float4(1.0);
+            for pad in net_info.pads.values(){
+                let pad_renderables = pad.to_renderables(net_color);
+                let pad_clearance_renderables = pad.to_clearance_renderables(net_color);
+                pad_shape_renderables.extend(pad_renderables);
+                pad_shape_renderables.extend(pad_clearance_renderables);
+            }            
             for (_, connection) in net_info.connections.iter() {
                 // Add fixed traces
                 if let Some(Traces::Fixed(fixed_trace)) =
@@ -798,15 +808,7 @@ impl ProbaModel {
                         let renderable_batches = proba_trace.trace_path.to_renderables(color);
                         trace_shape_renderables.extend(renderable_batches);
                     }
-                }
-                let sink_renderables = connection
-                    .sink
-                    .to_renderables(net_info.color.to_float4(1.0));
-                let sink_clearance_renderables = connection
-                    .sink
-                    .to_clearance_renderables(net_info.color.to_float4(0.5));
-                pad_shape_renderables.extend(sink_renderables);
-                pad_shape_renderables.extend(sink_clearance_renderables);
+                }                
             }
         }
         for line in &problem.obstacle_border_outlines {
