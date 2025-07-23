@@ -5,7 +5,7 @@ use std::{
 
 use cgmath::Deg;
 
-use parser::parse_end_to_end::parse_end_to_end;
+use parser::{parse_end_to_end::parse_end_to_end, write_ses::write_ses};
 use router::{
     pcb_problem_solve::solve_pcb_problem, test_pcb_problem::pcb_problem1,
     test_pcb_problem::pcb_problem2,
@@ -25,12 +25,15 @@ pub fn working_thread_fn(pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>) {
         }
     };
     let result = solve_pcb_problem(&pcb_problem, pcb_render_model.clone());
-    match result {
-        Ok(_) => {
+    let result = match result {
+        Ok(result) => {
             println!("PCB problem solved successfully");
+            result
         }
         Err(e) => {
             println!("Failed to solve PCB problem: {}", e);
+            exit(0);
         }
-    }
+    };
+    write_ses(dsn, solution, output)
 }
