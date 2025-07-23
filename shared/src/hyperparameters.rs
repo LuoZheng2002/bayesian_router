@@ -52,7 +52,7 @@ pub const LAYER_TO_TRACE_COLOR: [ColorFloat3; 4] = [
 
 lazy_static! {
     pub static ref ASTAR_STRIDE: FixedPoint = {
-        let raw_stride: f32 = 1.27;
+        let raw_stride: f32 = 4.0;
         let mut result = FixedPoint::from_num(raw_stride);
         let result_bits = result.to_bits();
         if result_bits & 1 == 1{
