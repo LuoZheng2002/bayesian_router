@@ -223,30 +223,30 @@ fn vertices_to_round_rect_and_scale(vertices: &Vec<FloatVec2>, scale_down_factor
     }
     let width = x_max - x_min;
     let height = y_max - y_min;
-    // let min_corner_radius: f32 = 0.0;
-    // let max_corner_radius = f32::min(width, height) / 2.0;
-    // let distance_to_round_rect_closure = |corner_radius: f32| {
-    //     let mut distance_sum = 0.0;
-    //     for vertex in vertices {
-    //         distance_sum += distance_to_round_rect(*vertex, width, height, corner_radius);
-    //     }
-    //     distance_sum
-    // };
-    // let corner_radius = golden_section_search(
-    //     distance_to_round_rect_closure,
-    //     min_corner_radius,
-    //     max_corner_radius,
-    //     100,
-    // );
-    // PadShape::RoundRect {
-    //     width: width / scale_down_factor,
-    //     height: height / scale_down_factor,
-    //     corner_radius: corner_radius / scale_down_factor,
-    // }
-    PadShape::Rectangle { 
+    let min_corner_radius: f32 = 0.0;
+    let max_corner_radius = f32::min(width, height) / 2.0;
+    let distance_to_round_rect_closure = |corner_radius: f32| {
+        let mut distance_sum = 0.0;
+        for vertex in vertices {
+            distance_sum += distance_to_round_rect(*vertex, width, height, corner_radius);
+        }
+        distance_sum
+    };
+    let corner_radius = golden_section_search(
+        distance_to_round_rect_closure,
+        min_corner_radius,
+        max_corner_radius,
+        100,
+    );
+    PadShape::RoundRect {
         width: width / scale_down_factor,
         height: height / scale_down_factor,
+        corner_radius: corner_radius / scale_down_factor,
     }
+    // PadShape::Rectangle { 
+    //     width: width / scale_down_factor,
+    //     height: height / scale_down_factor,
+    // }
 }
 
 fn convert_shape_and_scale(shape: &Shape, scale_down_factor: f32) -> Result<PadShape, String> {

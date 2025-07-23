@@ -124,7 +124,7 @@ pub fn solve_pcb_problem(
                 let _unused = COMMAND_CVS[3].wait(mutex_guard).unwrap();
             }
         } else {
-            thread::sleep(Duration::from_millis(400));
+            thread::sleep(Duration::from_millis(0));
         }
     }
 
@@ -147,6 +147,7 @@ pub fn solve_pcb_problem(
             let fixed_traces = top_node.fixed_traces.clone();
             let solution = PcbSolution {
                 determined_traces: fixed_traces,
+                scale_down_factor: pcb_problem.scale_down_factor,
             };
             return Ok(solution);
         }

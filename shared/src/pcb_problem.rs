@@ -72,6 +72,7 @@ pub struct FixedTrace {
 
 pub struct PcbSolution {
     pub determined_traces: HashMap<ConnectionID, FixedTrace>, // NetID to ConnectionID to FixedTrace
+    pub scale_down_factor: f32, // Scale down factor to convert specctra dsn units to float units
 }
 
 impl PcbProblem {
