@@ -7,8 +7,7 @@ use cgmath::Deg;
 
 use parser::{parse_end_to_end::{parse_end_to_end, parse_start_to_dsn_struct, parse_struct_to_end}, write_ses::write_ses};
 use router::{
-    pcb_problem_solve::solve_pcb_problem, test_pcb_problem::pcb_problem1,
-    test_pcb_problem::pcb_problem2,
+    pcb_problem_solve::solve_pcb_problem,
 };
 use shared::pcb_render_model::PcbRenderModel;
 
@@ -16,7 +15,7 @@ pub fn working_thread_fn(pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>) {
     println!("Working thread started");
     // let pcb_problem = pcb_problem2();
 
-    let dsn_file_content = std::fs::read_to_string("bad.dsn").unwrap();
+    let dsn_file_content = std::fs::read_to_string("Digistump_ATtiny.dsn").unwrap();
     let dsn_struct = match parse_start_to_dsn_struct(dsn_file_content.clone()) {
         Ok(structure) => structure,
         Err(e) => {

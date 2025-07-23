@@ -121,7 +121,7 @@ pub fn solve_pcb_problem(
     node_stack.push(first_node);
 
     while node_stack.len() > 0 {
-        print_current_stack(&node_stack);
+        // print_current_stack(&node_stack);
         display_when_necessary(
             node_stack.last().unwrap(),
             pcb_problem,
@@ -130,6 +130,7 @@ pub fn solve_pcb_problem(
         let top_node = node_stack.last_mut().unwrap();
         if top_node.is_solution(pcb_problem) {
             println!("Found a solution!");
+            println!("Number of samples taken: {}", shared::hyperparameters::SAMPLE_CNT.load(Ordering::SeqCst));
             // If the top node is a solution, we can return it
             let fixed_traces = top_node.fixed_traces.clone();
             let solution = PcbSolution {
@@ -186,7 +187,7 @@ pub fn solve_pcb_problem(
                             "Successfully updated the probabilistic model, replacing node at index {}",
                             target_index
                         );
-                        print_current_stack(&node_stack);
+                        // print_current_stack(&node_stack);
                     }
                     None => {
                         // // If we failed to update the probabilistic model, we pop the current node from the stack

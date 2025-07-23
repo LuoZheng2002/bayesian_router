@@ -1,4 +1,4 @@
-use std::{collections::HashMap, num::NonZeroUsize, sync::Mutex};
+use std::{collections::HashMap, num::NonZeroUsize, sync::{atomic::AtomicUsize, Mutex}};
 
 use lazy_static::lazy_static;
 
@@ -51,8 +51,9 @@ pub const LAYER_TO_TRACE_COLOR: [ColorFloat3; 4] = [
 ];
 
 lazy_static! {
+    pub static ref SAMPLE_CNT: AtomicUsize = AtomicUsize::new(0); // Global counter for the number of samples taken
     pub static ref ASTAR_STRIDE: FixedPoint = {
-        let raw_stride: f32 = 4.0;
+        let raw_stride: f32 = 1.27;
         let mut result = FixedPoint::from_num(raw_stride);
         let result_bits = result.to_bits();
         if result_bits & 1 == 1{

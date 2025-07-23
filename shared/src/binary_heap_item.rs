@@ -5,6 +5,11 @@ pub struct BinaryHeapItem<T, U> {
     pub key: T,   // used for ordering
     pub value: U, // not used for ordering
 }
+impl<T: Ord, U> BinaryHeapItem<T, U> {
+    pub fn new(key: T, value: U) -> Self {
+        BinaryHeapItem { key, value }
+    }
+}
 
 // Implement Eq and Ord based on key
 impl<T: Ord, U> PartialEq for BinaryHeapItem<T, U> {

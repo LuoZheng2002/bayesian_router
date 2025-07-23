@@ -10,7 +10,7 @@ use crate::{
     parse_to_display_format::{DisplayFormat, ExtraInfo},
     prim_mst::prim_mst,
 };
-use std::{collections::HashMap, ffi::os_str::Display, rc::Rc};
+use std::{collections::HashMap, rc::Rc};
 
 pub struct Converter;
 

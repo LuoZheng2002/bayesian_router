@@ -11,9 +11,7 @@ use shared::{
     collider::Collider,
     deterministic_rand::create_deterministic_rng,
     hyperparameters::{
-        CONSTANT_LEARNING_RATE, ITERATION_TO_NUM_TRACES, ITERATION_TO_PRIOR_PROBABILITY,
-        LINEAR_LEARNING_RATE, MAX_GENERATION_ATTEMPTS, NEXT_ITERATION_TO_REMAINING_PROBABILITY,
-        OPPORTUNITY_COST_WEIGHT, SAMPLE_ITERATIONS, SCORE_WEIGHT,
+        CONSTANT_LEARNING_RATE, ITERATION_TO_NUM_TRACES, ITERATION_TO_PRIOR_PROBABILITY, LINEAR_LEARNING_RATE, MAX_GENERATION_ATTEMPTS, NEXT_ITERATION_TO_REMAINING_PROBABILITY, OPPORTUNITY_COST_WEIGHT, SAMPLE_CNT, SAMPLE_ITERATIONS, SCORE_WEIGHT
     },
     pcb_problem::{Connection, ConnectionID, FixedTrace, NetName, PcbProblem},
     pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel},
@@ -232,7 +230,6 @@ impl ProbaModel {
 
         let border_colliders = AStarModel::calculate_border_colliders(problem.width, problem.height, problem.center);
         
-        let sample_cnt = 0;
         // the outer loop for generating the dijkstra model
         for (net_name, net_info) in problem.nets.iter() {
             // collect connections that are not in this net
@@ -243,11 +240,11 @@ impl ProbaModel {
                 .flat_map(|(_, net_info)| net_info.connections.keys())
                 .cloned()
                 .collect();
-            let mut obstacle_source_pad_shapes: HashMap<usize, Vec<PrimShape>> = (0..problem
+            let mut obstacle_pad_shapes: HashMap<usize, Vec<PrimShape>> = (0..problem
                 .num_layers)
                 .map(|layer| (layer, Vec::new()))
                 .collect();
-            let mut obstacle_source_pad_clearance_shapes: HashMap<usize, Vec<PrimShape>> = (0
+            let mut obstacle_pad_clearance_shapes: HashMap<usize, Vec<PrimShape>> = (0
                 ..problem.num_layers)
                 .map(|layer| (layer, Vec::new()))
                 .collect();
@@ -256,17 +253,25 @@ impl ProbaModel {
                 .iter()
                 .filter(|(other_net_id, _)| **other_net_id != *net_name)
             {
-                let source_pad_layers = net_info.source.pad_layer.get_iter(problem.num_layers);
-                for layer in source_pad_layers {
-                    obstacle_source_pad_shapes
-                        .get_mut(&layer)
-                        .unwrap()
-                        .extend(net_info.source.to_shapes());
-                    obstacle_source_pad_clearance_shapes
-                        .get_mut(&layer)
-                        .unwrap()
-                        .extend(net_info.source.to_clearance_shapes());
+                for pad in net_info.pads.values(){
+                    let pad_layers = pad.pad_layer.get_iter(problem.num_layers);
+                    for layer in pad_layers{
+                        obstacle_pad_shapes.get_mut(&layer).unwrap().extend(pad.to_shapes());
+                        obstacle_pad_clearance_shapes.get_mut(&layer).unwrap().extend(pad.to_clearance_shapes());
+                    }
                 }
+                // let source_pad_layers = net_info.source.pad_layer.get_iter(problem.num_layers);
+
+                // for layer in source_pad_layers {
+                //     obstacle_source_pad_shapes
+                //         .get_mut(&layer)
+                //         .unwrap()
+                //         .extend(net_info.source.to_shapes());
+                //     obstacle_source_pad_clearance_shapes
+                //         .get_mut(&layer)
+                //         .unwrap()
+                //         .extend(net_info.source.to_clearance_shapes());
+                // }
             }
             // initialize the number of generated traces for each connection
             let mut num_generated_traces: HashMap<ConnectionID, usize> = self
@@ -285,7 +290,7 @@ impl ProbaModel {
                 .as_str(),
             );
 
-            // in this while loop, we will generate obstacles f            
+            // in this while loop, we will generate obstacles fosuitable for the whole net            
             
             // let mut connection_to_visited_traces: HashMap<ConnectionID, Vec<TracePath>> =
             //     HashMap::new();
@@ -387,19 +392,19 @@ impl ProbaModel {
                     })
                     .collect();
                 for i in (0..problem.num_layers).into_iter() {
-                    // add source pad shapes and clearance shapes
+                    // add pad shapes and clearance shapes
                     let obstacle_shapes = obstacle_shapes.get_mut(&i).unwrap();
                     let obstacle_clearance_shapes = obstacle_clearance_shapes.get_mut(&i).unwrap();
                     let obstacle_colliders = obstacle_colliders.get_mut(&i).unwrap();
                     let obstacle_clearance_colliders =
                         obstacle_clearance_colliders.get_mut(&i).unwrap();
-                    for shape in obstacle_source_pad_shapes.get(&i).unwrap().iter() {
+                    for shape in obstacle_pad_shapes[&i].iter() {
                         obstacle_shapes.push(shape.clone());
                         let collider = Collider::from_prim_shape(shape);
                         obstacle_colliders.insert(collider);
                     }
                     for clearance_shape in
-                        obstacle_source_pad_clearance_shapes.get(&i).unwrap().iter()
+                        obstacle_pad_clearance_shapes[&i].iter()
                     {
                         obstacle_clearance_shapes.push(clearance_shape.clone());
                         let clearance_collider = Collider::from_prim_shape(clearance_shape);
@@ -484,31 +489,31 @@ impl ProbaModel {
                     }
                 }
                 // add all pads in other nets to the obstacle shapes
-                for obstacle_connection_id in obstacle_connections.iter() {
-                    let connection = connections.get(obstacle_connection_id).unwrap();
-                    let pad = &connection.sink;
-                    let pad_layers = pad.pad_layer.get_iter(problem.num_layers);
-                    let pad_shapes = pad.to_shapes();
-                    let pad_clearance_shapes = pad.to_clearance_shapes();
-                    for layer in pad_layers {
-                        let obstacle_shapes = obstacle_shapes.get_mut(&layer).unwrap();
-                        let obstacle_clearance_shapes =
-                            obstacle_clearance_shapes.get_mut(&layer).unwrap();
-                        let obstacle_colliders = obstacle_colliders.get_mut(&layer).unwrap();
-                        let obstacle_clearance_colliders =
-                            obstacle_clearance_colliders.get_mut(&layer).unwrap();
-                        for shape in pad_shapes.iter() {
-                            obstacle_shapes.push(shape.clone());
-                            let collider = Collider::from_prim_shape(shape);
-                            obstacle_colliders.insert(collider);
-                        }
-                        for clearance_shape in pad_clearance_shapes.iter() {
-                            obstacle_clearance_shapes.push(clearance_shape.clone());
-                            let clearance_collider = Collider::from_prim_shape(clearance_shape);
-                            obstacle_clearance_colliders.insert(clearance_collider);
-                        }
-                    }
-                }
+                // for obstacle_connection_id in obstacle_connections.iter() {
+                //     let connection = connections.get(obstacle_connection_id).unwrap();
+                //     let pad = &connection.sink;
+                //     let pad_layers = pad.pad_layer.get_iter(problem.num_layers);
+                //     let pad_shapes = pad.to_shapes();
+                //     let pad_clearance_shapes = pad.to_clearance_shapes();
+                //     for layer in pad_layers {
+                //         let obstacle_shapes = obstacle_shapes.get_mut(&layer).unwrap();
+                //         let obstacle_clearance_shapes =
+                //             obstacle_clearance_shapes.get_mut(&layer).unwrap();
+                //         let obstacle_colliders = obstacle_colliders.get_mut(&layer).unwrap();
+                //         let obstacle_clearance_colliders =
+                //             obstacle_clearance_colliders.get_mut(&layer).unwrap();
+                //         for shape in pad_shapes.iter() {
+                //             obstacle_shapes.push(shape.clone());
+                //             let collider = Collider::from_prim_shape(shape);
+                //             obstacle_colliders.insert(collider);
+                //         }
+                //         for clearance_shape in pad_clearance_shapes.iter() {
+                //             obstacle_clearance_shapes.push(clearance_shape.clone());
+                //             let clearance_collider = Collider::from_prim_shape(clearance_shape);
+                //             obstacle_clearance_colliders.insert(clearance_collider);
+                //         }
+                //     }
+                // }
                 let obstacle_shapes = Rc::new(obstacle_shapes);
                 let obstacle_clearance_shapes = Rc::new(obstacle_clearance_shapes);
                 let obstacle_colliders: Rc<HashMap<usize, QuadTreeNode>> =
@@ -588,8 +593,8 @@ impl ProbaModel {
                     // prepare for the a star model
                     // let start = net_info.source.position.to_fixed().to_nearest_even_even();
                     // let end = connection.sink.position.to_fixed().to_nearest_even_even();
-                    let start_pad = net_info.pads[&connection.start_pad];
-                    let end_pad = net_info.pads[&connection.end_pad];
+                    let start_pad = net_info.pads.get(&connection.start_pad).unwrap();
+                    let end_pad = net_info.pads.get(&connection.end_pad).unwrap();
                     let start = start_pad.position.to_fixed().to_nearest_even_even();
                     let end = end_pad.position.to_fixed().to_nearest_even_even();
                     let start_layers = start_pad.pad_layer;
@@ -613,7 +618,7 @@ impl ProbaModel {
                         border_colliders_cache: RefCell::new(None), // Cache for border points, initialized to None
                         border_shapes_cache: RefCell::new(None), // Cache for border shapes, initialized to None
                     };
-                    sample_cnt += 1;
+                    SAMPLE_CNT.fetch_add(1, Ordering::SeqCst);
                     // run A* algorithm to find a path
                     let astar_result = astar_model.run(pcb_render_model.clone());
                     let astar_result = match astar_result {
@@ -658,7 +663,6 @@ impl ProbaModel {
                 }
             }
         }
-        println!("sample_cnt = {}", sample_cnt);
 
         // add the new traces to the model
         for proba_trace in new_proba_traces {
