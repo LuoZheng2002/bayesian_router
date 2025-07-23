@@ -318,7 +318,10 @@ fn parse_image(s_expr: &Vec<SExpr>) -> Result<Image, String> {
         match first_item.as_str() {
             "outline" => {
                 continue;
-            }
+            },
+            "keepout"=>{
+                continue;
+            },
             "pin" => {
                 let pad_stack_name = expr_list
                     .get(1)
