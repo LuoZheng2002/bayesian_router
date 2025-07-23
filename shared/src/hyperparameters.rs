@@ -37,11 +37,11 @@ pub const TURN_PENALTY: f64 = 1.0;
 
 pub const ESTIMATE_COEFFICIENT: f64 = 1.0;
 
-pub const VIA_COST: f64 = 2.0; // Cost of placing a via
+pub const VIA_COST: f64 = 5.0; // Cost of placing a via
 
 pub const NUM_TOP_RANKED_TO_TRY: usize = 3; // Number of top-ranked traces to try fixing in each iteration
 
-pub const SAMPLE_ITERATIONS: usize = 2;
+pub const SAMPLE_ITERATIONS: usize = 1;
 
 pub const LAYER_TO_TRACE_COLOR: [ColorFloat3; 4] = [
     ColorFloat3::new(1.0, 0.0, 0.0), // Red for front layer
@@ -52,7 +52,7 @@ pub const LAYER_TO_TRACE_COLOR: [ColorFloat3; 4] = [
 
 lazy_static! {
     pub static ref ASTAR_STRIDE: FixedPoint = {
-        let raw_stride: f32 = 2.54;
+        let raw_stride: f32 = 1.27;
         let mut result = FixedPoint::from_num(raw_stride);
         let result_bits = result.to_bits();
         if result_bits & 1 == 1{

@@ -10,8 +10,8 @@ fn generate_placement<W: Write>(file: &mut W, dsn: &DsnStruct) -> Result<()> {
     writeln!(file, "  (placement")?;
     writeln!(
         file,
-        "    (resolution {} {})",
-        dsn.resolution.unit, dsn.resolution.value
+        "    (resolution {} 1)",
+        dsn.resolution.unit, // dsn.resolution.value
     )?;
     for component in &dsn.placement.components {
         writeln!(file, "    (component \"{}\"", component.name).unwrap();
@@ -19,7 +19,7 @@ fn generate_placement<W: Write>(file: &mut W, dsn: &DsnStruct) -> Result<()> {
         for inst in &component.instances {
             writeln!(
                 file,
-                "      (place {} {:.6} {:.6} {:?} {:.6})",
+                "      (place {} {:.6} {:.6} {} {:.6})",
                 inst.reference,
                 inst.position.x,
                 inst.position.y,
@@ -43,7 +43,7 @@ pub struct ViaSES {
 impl ViaSES {
     fn to_ses_string(&self, layers: &[String]) -> String {
         let shape = &self.shape;
-        let dia_int = (self.diameter * 10000.0).round() as i32;
+        let dia_int = self.diameter.round() as i32;
         let mut s = format!("      (padstack \"{}\"\n", self.name);
 
         if self.through_hole {
@@ -112,6 +112,7 @@ fn generate_network<W: Write>(
 ) -> Result<()> {
     // This function will generate the network information based on the PcbProblem and PcbSolution
     // The implementation will depend on the specific requirements of the network format
+    let scale_down_factor = solution.scale_down_factor;
 
     let mut nets: HashMap<&String, Vec<&FixedTrace>> = HashMap::new();
     for trace in solution.determined_traces.values() {
@@ -119,13 +120,13 @@ fn generate_network<W: Write>(
     }
 
     for (net_name, traces) in nets {
-        writeln!(file, "  (net \"{}\")", net_name).unwrap();
+        writeln!(file, "  (net \"{}\"", net_name).unwrap();
         let via_name = find_via_name(&net_name, &dsn).unwrap_or("default_via".to_string());
 
         for trace in traces {
             for via in &trace.trace_path.vias {
                 let (x, y) = extract_fixed_vec2(&via.position);
-                writeln!(file, "    (via {} {} {})", via_name, x, y)?;
+                writeln!(file, "    (via {} {} {})", via_name, x * scale_down_factor, y * scale_down_factor)?;
             }
             for segment in &trace.trace_path.segments {
                 let (start_x, start_y) = extract_fixed_vec2(&segment.start);
@@ -135,11 +136,11 @@ fn generate_network<W: Write>(
                     file,
                     "        (wire\n          (path {} {}\n            {} {}\n            {} {}))",
                     layer_name, // 0 = front, highest = back
-                    segment.width,
-                    start_x,
-                    start_y,
-                    end_x,
-                    end_y
+                    segment.width * scale_down_factor,
+                    start_x * scale_down_factor,
+                    start_y * scale_down_factor,
+                    end_x * scale_down_factor,
+                    end_y * scale_down_factor
                 )?;
             }
         }
@@ -167,8 +168,8 @@ pub fn write_ses(dsn: &DsnStruct, solution: &PcbSolution, output: &str) -> Resul
     writeln!(ses, "  (routes")?;
     writeln!(
         ses,
-        "    (resolution {} {})",
-        dsn.resolution.unit, dsn.resolution.value
+        "    (resolution {} 1)",
+        dsn.resolution.unit// , dsn.resolution.value
     )?;
     writeln!(ses, "    (parser")?;
     writeln!(ses, "      (host_cad \"KiCad's Pcbnew\")")?;

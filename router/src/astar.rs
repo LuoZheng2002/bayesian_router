@@ -1049,15 +1049,15 @@ impl AStarModel {
                     self.trace_clearance,
                     self.via_diameter,
                 );
-                let trace_path = optimize_path(
-                    &trace_path,
-                    &|start, end, width, clearance, layer: usize| {
-                        self.check_collision_for_trace(start, end, width, clearance, layer)
-                    },
-                    self.trace_width,
-                    self.trace_clearance,
-                    self.via_diameter,
-                );
+                // let trace_path = optimize_path(
+                //     &trace_path,
+                //     &|start, end, width, clearance, layer: usize| {
+                //         self.check_collision_for_trace(start, end, width, clearance, layer)
+                //     },
+                //     self.trace_width,
+                //     self.trace_clearance,
+                //     self.via_diameter,
+                // );
                 return Ok(AStarResult { trace_path });
             }
 
