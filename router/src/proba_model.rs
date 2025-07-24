@@ -11,7 +11,7 @@ use shared::{
     collider::Collider,
     deterministic_rand::create_deterministic_rng,
     hyperparameters::{
-        CONSTANT_LEARNING_RATE, ITERATION_TO_NUM_TRACES, ITERATION_TO_PRIOR_PROBABILITY, LINEAR_LEARNING_RATE, MAX_GENERATION_ATTEMPTS, NEXT_ITERATION_TO_REMAINING_PROBABILITY, OPPORTUNITY_COST_WEIGHT, SAMPLE_CNT, SAMPLE_ITERATIONS, SCORE_WEIGHT
+        CONSTANT_LEARNING_RATE, HALF_PROBABILITY_OPPORTUNITY_COST, ITERATION_TO_NUM_TRACES, ITERATION_TO_PRIOR_PROBABILITY, LINEAR_LEARNING_RATE, MAX_GENERATION_ATTEMPTS, NEXT_ITERATION_TO_REMAINING_PROBABILITY, OPPORTUNITY_COST_WEIGHT, SAMPLE_CNT, SAMPLE_ITERATIONS, SCORE_WEIGHT
     },
     pcb_problem::{Connection, ConnectionID, FixedTrace, NetName, PcbProblem},
     pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable, UpdatePcbRenderModel},
@@ -135,6 +135,7 @@ impl ProbaModel {
                 proba_model.update_posterior();
                 display_when_necessary(&proba_model, CommandFlag::AstarFrontierOrUpdatePosterior);
             }
+            display_when_necessary(&proba_model, CommandFlag::UpdatePosteriorResult);
         }
         proba_model
     }
@@ -831,7 +832,7 @@ impl ProbaModel {
             let adjacent_traces = self.collision_adjacency.get(proba_trace_id).expect(
                 format!("No adjacent traces for ProbaTraceID {:?}", proba_trace_id).as_str(),
             );
-            let mut proba_product = 1.0;
+            let mut target_penalty = 0.0;
             for adjacent_trace_id in adjacent_traces.iter() {
                 let adjacent_trace = proba_traces.get(adjacent_trace_id).expect(
                     format!(
@@ -842,23 +843,27 @@ impl ProbaModel {
                 );
                 let posterior = adjacent_trace.get_posterior_with_fallback();
                 // to do: update this
-                let one_minus_posterior = (1.0 - posterior).max(0.0); // Ensure non-negative
-                proba_product *= one_minus_posterior;
+                target_penalty += posterior;
             }
-            let target_posterior = proba_product;
-            assert!(
-                target_posterior >= 0.0 && target_posterior <= 1.0,
-                "Target posterior must be between 0 and 1"
-            );
             // get num traces in the same iteration
             let current_posterior = proba_trace.get_posterior_with_fallback();
-            let opportunity_cost = target_posterior / current_posterior;
+            // let opportunity_cost = target_posterior / current_posterior;
+
             let score = proba_trace.trace_path.get_score();
-            let score_weight = *SCORE_WEIGHT.lock().unwrap();
-            let opportunity_cost_weight = *OPPORTUNITY_COST_WEIGHT.lock().unwrap();
+            // let score_weight = *SCORE_WEIGHT.lock().unwrap();
+            // let opportunity_cost_weight = *OPPORTUNITY_COST_WEIGHT.lock().unwrap();
+            let k = f64::ln(2.0) / HALF_PROBABILITY_OPPORTUNITY_COST;
+            let opportunity_cost = f64::exp(-k * target_penalty);
+            println!("penalty: {}, opportunity cost: {}", target_penalty, opportunity_cost);
+            assert!(
+                opportunity_cost >= 0.0 && opportunity_cost <= 1.0,
+                "Opportunity cost must be between 0 and 1, got: {}",
+                opportunity_cost
+            );
             let target_posterior_unnormalized = 1.0
-                * f64::powf(score, score_weight)
-                * f64::powf(opportunity_cost, opportunity_cost_weight);
+                // * f64::powf(score, score_weight)
+                * score
+                * opportunity_cost;
             let target_posterior_normalized =
                 proba_trace.get_normalized_prior() * target_posterior_unnormalized;
             let mut temp_posterior = proba_trace.temp_posterior.borrow_mut();

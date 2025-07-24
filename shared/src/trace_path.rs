@@ -504,6 +504,7 @@ impl TracePath {
         let score_raw = self.total_length; // placeholder for actual score calculation
         let k = f64::ln(2.0) / HALF_PROBABILITY_RAW_SCORE;
         let score = f64::exp(-k * score_raw);
+        println!("total length: {}, score: {}", self.total_length, score);
         assert!(
             score >= 0.0 && score <= 1.0,
             "Score must be between 0 and 1, got: {}",
@@ -518,7 +519,7 @@ impl TracePath {
         let clearance_color = [color[0], color[1], color[2], color[3] / 2.0]; // semi-transparent color
         // Render the segments
         for segment in &self.segments {
-            let segment_color = LAYER_TO_TRACE_COLOR[segment.layer].to_float4(1.0);
+            let segment_color = LAYER_TO_TRACE_COLOR[segment.layer].to_float4(color[3]/2.0);
             let segment_renderables = segment.to_renderables(segment_color);
             let segment_clearance_renderables = segment.to_clearance_renderables(clearance_color); // semi-transparent color
             renderables.extend(segment_renderables);

@@ -23,14 +23,15 @@ pub fn working_thread_fn(pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>) {
             exit(-1);
         }
     };
-    let pcb_problem = match parse_struct_to_end(&dsn_struct) {
+    let mut pcb_problem = match parse_struct_to_end(&dsn_struct) {
         Ok(problem) => problem,
         Err(e) => {
             println!("Failed to parse DSN file: {}", e);
             exit(-1);
         }
     };
-    let result = solve_pcb_problem(&pcb_problem, pcb_render_model.clone(), false);
+    pcb_problem.num_layers = 1; // Set to 1 for single layer PCB
+    let result = solve_pcb_problem(&pcb_problem, pcb_render_model.clone(), true);
     let result = match result {
         Ok(result) => {
             println!("PCB problem solved successfully");

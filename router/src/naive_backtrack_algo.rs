@@ -1,16 +1,16 @@
-use std::{cell::RefCell, cmp::Reverse, collections::{BinaryHeap, HashMap, VecDeque}, hash::Hash, rc::Rc, sync::{Arc, Mutex}};
+use std::{cell::RefCell, cmp::Reverse, collections::{BinaryHeap, HashMap, VecDeque}, hash::Hash, rc::Rc, sync::{atomic::Ordering, Arc, Mutex}, thread, time::Duration};
 
 use ordered_float::NotNan;
-use shared::{binary_heap_item::BinaryHeapItem, collider::Collider, pad::{Pad, PadName}, pcb_problem::{Connection, ConnectionID, FixedTrace, NetInfo, PcbProblem, PcbSolution}, pcb_render_model::PcbRenderModel, prim_shape::PrimShape, trace_path::TracePath};
+use shared::{binary_heap_item::BinaryHeapItem, collider::Collider, color_float3::ColorFloat3, pad::{Pad, PadName}, pcb_problem::{Connection, ConnectionID, FixedTrace, NetInfo, NetName, PcbProblem, PcbSolution}, pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable}, prim_shape::PrimShape, trace_path::TracePath};
 
-use crate::{astar::{self, AStarModel}, quad_tree::QuadTreeNode};
+use crate::{astar::{self, AStarModel}, command_flags::{CommandFlag, COMMAND_CVS, COMMAND_LEVEL, COMMAND_MUTEXES}, quad_tree::QuadTreeNode};
 
 
 
 pub struct NaiveBacktrackNode{
     pub current_connection: Option<ConnectionID>,
     pub alternative_connections: VecDeque<ConnectionID>,
-    pub fixed_connections: HashMap<ConnectionID, TracePath>,
+    pub fixed_connections: HashMap<ConnectionID, FixedTrace>,
 }
 impl NaiveBacktrackNode{
     pub fn new_empty(all_ordered_connections: &Vec<ConnectionID>) -> Self{
@@ -22,11 +22,11 @@ impl NaiveBacktrackNode{
             fixed_connections: HashMap::new(),
         }
     }
-    pub fn push_node(&mut self, connection: ConnectionID, trace: TracePath) -> Self {
+    pub fn push_node(&mut self, connection: ConnectionID, fixed_trace: FixedTrace) -> Self {
         assert!(connection == self.current_connection.unwrap(), "Cannot add a fixed connection that is not the current connection");
         self.current_connection = None; // reset current connection
         let mut fixed_connections = self.fixed_connections.clone();
-        fixed_connections.insert(connection, trace);
+        fixed_connections.insert(connection, fixed_trace);
         NaiveBacktrackNode {
             fixed_connections,
             current_connection: None,
@@ -35,7 +35,69 @@ impl NaiveBacktrackNode{
     }
 }
 
+fn node_to_pcb_render_model(problem: &PcbProblem, node: &NaiveBacktrackNode) -> PcbRenderModel {
+    let mut trace_shape_renderables: Vec<RenderableBatch> = Vec::new();
+    let mut pad_shape_renderables: Vec<ShapeRenderable> = Vec::new();
+    let mut other_shape_renderables: Vec<ShapeRenderable> = Vec::new();
+    let mut net_name_to_color: HashMap<NetName, ColorFloat3> = HashMap::new();
+    for (_, net_info) in problem.nets.iter() {
+        net_name_to_color.insert(net_info.net_name.clone(), net_info.color);
+        for pad in net_info.pads.values(){
+            let pad_renderables = pad.to_renderables(net_info.color.to_float4(1.0));
+            let pad_clearance_renderables = pad.to_clearance_renderables(net_info.color.to_float4(1.0));
+            pad_shape_renderables.extend(pad_renderables);
+            pad_shape_renderables.extend(pad_clearance_renderables);
+        }
+    }
+    for fixed_trace in node.fixed_connections.values() {
+        let trace_path = &fixed_trace.trace_path;
+        let renderable_batches = trace_path
+            .to_renderables(net_name_to_color[&fixed_trace.net_name].to_float4(1.0));
+        trace_shape_renderables.extend(renderable_batches);
+    }
+    for line in &problem.obstacle_border_outlines {
+        other_shape_renderables.push(ShapeRenderable {
+            shape: PrimShape::Line(line.clone()),
+            color: [1.0, 0.0, 1.0, 1.0], // magenta color for borders
+        });
+    }
+    PcbRenderModel {
+        width: problem.width,
+        height: problem.height,
+        center: problem.center,
+        trace_shape_renderables,
+        pad_shape_renderables,
+        other_shape_renderables,
+    }
+}
+
+fn display_when_necessary(
+    node: &NaiveBacktrackNode,
+    pcb_problem: &PcbProblem,
+    pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>,
+) {
+    let command_level = COMMAND_LEVEL.load(Ordering::Relaxed);
+    {
+        let mut pcb_render_model = pcb_render_model.lock().unwrap();
+        if pcb_render_model.is_some() {
+            return; // already rendered, no need to update
+        }
+        let render_model = node_to_pcb_render_model(pcb_problem, node);
+        *pcb_render_model = Some(render_model);
+    }
+    if command_level <= CommandFlag::ProbaModelResult.get_level() {
+        // block the thread until the user clicks a button
+        {
+            let mutex_guard = COMMAND_MUTEXES[3].lock().unwrap();
+            let _unused = COMMAND_CVS[3].wait(mutex_guard).unwrap();
+        }
+    } else {
+        thread::sleep(Duration::from_millis(0));
+    }
+}
 pub fn naive_backtrack(problem: &PcbProblem, pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>) -> Result<PcbSolution, String> {
+
+
     // prepare the obstacles for the first A* run
     
                 
@@ -182,16 +244,14 @@ pub fn naive_backtrack(problem: &PcbProblem, pcb_render_model: Arc<Mutex<Option<
         // Get the top node from the stack
         let top_node = backtrack_stack.last_mut().unwrap();
         assert!(top_node.current_connection.is_none());
+
+        display_when_necessary(&top_node, &problem, pcb_render_model.clone());
         if top_node.alternative_connections.is_empty() {
             // is solution
             let fixed_connections = std::mem::take(&mut top_node.fixed_connections);
             let fixed_traces: HashMap<ConnectionID, FixedTrace> = fixed_connections.into_iter()
-                .map(|(connection_id, trace_path)| {
-                    let fixed_trace = FixedTrace {
-                        net_name: connections.get(&connection_id).unwrap().net_name.clone(),
-                        connection_id: connection_id,
-                        trace_path: trace_path.clone(),
-                    };
+                .map(|(connection_id, fixed_trace)| {
+ 
                     (connection_id, fixed_trace)
                 })
                 .collect();
@@ -268,7 +328,8 @@ pub fn naive_backtrack(problem: &PcbProblem, pcb_render_model: Arc<Mutex<Option<
             }
         }
         // add fixed traces
-        for (connection_id, trace_path) in top_node.fixed_connections.iter(){
+        for (connection_id, fixed_trace) in top_node.fixed_connections.iter(){
+            let trace_path = &fixed_trace.trace_path;
             let connection_net_name = connections.get(connection_id).unwrap().net_name.clone();
             if current_net_name != connection_net_name {
                 let trace_shapes = trace_path.to_shapes(problem.num_layers);
@@ -327,8 +388,12 @@ pub fn naive_backtrack(problem: &PcbProblem, pcb_render_model: Arc<Mutex<Option<
                 continue;
             }
         };
-
-        let new_node = top_node.push_node(current_connection, result.trace_path);
+        let fixed_trace = FixedTrace{
+            net_name: connection.net_name.clone(),
+            connection_id: connection.connection_id,
+            trace_path: result.trace_path,
+        };
+        let new_node = top_node.push_node(current_connection, fixed_trace);
         backtrack_stack.push(new_node);  
     }
     Err("No solution found".to_string())

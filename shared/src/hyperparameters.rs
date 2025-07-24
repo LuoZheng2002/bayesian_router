@@ -5,6 +5,7 @@ use lazy_static::lazy_static;
 use crate::{color_float3::ColorFloat3, vec2::FixedPoint};
 
 pub const HALF_PROBABILITY_RAW_SCORE: f64 = 10.0;
+pub const HALF_PROBABILITY_OPPORTUNITY_COST: f64 = 0.5;
 
 // pub const MAX_TRACES_PER_ITERATION: usize = 4; // Maximum number of traces per iteration
 pub const MAX_GENERATION_ATTEMPTS: usize = 4; // Maximum number of attempts to generate a trace
@@ -62,8 +63,8 @@ lazy_static! {
         assert!(result.to_bits() & 1 == 0, "A* stride must be even");
         result
     }; // A* search stride
-    pub static ref SCORE_WEIGHT: Mutex<f64> = Mutex::new(0.3);
-    pub static ref OPPORTUNITY_COST_WEIGHT: Mutex<f64> = Mutex::new(0.3);
+    pub static ref SCORE_WEIGHT: Mutex<f64> = Mutex::new(1.0);
+    pub static ref OPPORTUNITY_COST_WEIGHT: Mutex<f64> = Mutex::new(0.0);
     pub static ref ITERATION_TO_PRIOR_PROBABILITY: HashMap<NonZeroUsize, f64> = vec![
         (
             NonZeroUsize::new(1).unwrap(),
