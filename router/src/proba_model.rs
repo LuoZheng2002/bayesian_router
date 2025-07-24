@@ -260,18 +260,6 @@ impl ProbaModel {
                         obstacle_pad_clearance_shapes.get_mut(&layer).unwrap().extend(pad.to_clearance_shapes());
                     }
                 }
-                // let source_pad_layers = net_info.source.pad_layer.get_iter(problem.num_layers);
-
-                // for layer in source_pad_layers {
-                //     obstacle_source_pad_shapes
-                //         .get_mut(&layer)
-                //         .unwrap()
-                //         .extend(net_info.source.to_shapes());
-                //     obstacle_source_pad_clearance_shapes
-                //         .get_mut(&layer)
-                //         .unwrap()
-                //         .extend(net_info.source.to_clearance_shapes());
-                // }
             }
             // initialize the number of generated traces for each connection
             let mut num_generated_traces: HashMap<ConnectionID, usize> = self
@@ -428,28 +416,49 @@ impl ProbaModel {
                     } else {
                         continue; // Skip probabilistic traces
                     };
-                    let trace_segments = &fixed_trace.trace_path.segments;
-                    for segment in trace_segments.iter() {
-                        let layer = segment.layer;
-                        let shapes = segment.to_shapes();
-                        let clearance_shapes = segment.to_clearance_shapes();
-                        let obstacle_shapes = obstacle_shapes.get_mut(&layer).unwrap();
-                        let obstacle_clearance_shapes =
-                            obstacle_clearance_shapes.get_mut(&layer).unwrap();
-                        let obstacle_colliders = obstacle_colliders.get_mut(&layer).unwrap();
-                        let obstacle_clearance_colliders =
-                            obstacle_clearance_colliders.get_mut(&layer).unwrap();
-                        for shape in shapes.iter() {
-                            obstacle_shapes.push(shape.clone());
-                            let collider = Collider::from_prim_shape(shape);
-                            obstacle_colliders.insert(collider);
-                        }
-                        for clearance_shape in clearance_shapes.iter() {
-                            obstacle_clearance_shapes.push(clearance_shape.clone());
-                            let clearance_collider = Collider::from_prim_shape(clearance_shape);
-                            obstacle_clearance_colliders.insert(clearance_collider);
-                        }
+                    let trace_path = &fixed_trace.trace_path;
+                    let trace_shapes = trace_path.to_shapes(problem.num_layers);
+                    let trace_clearance_shapes = trace_path.to_clearance_shapes(problem.num_layers);
+                    let trace_colliders = trace_path.to_colliders(problem.num_layers);
+                    let trace_clearance_colliders = trace_path.to_clearance_colliders(problem.num_layers);
+                    for layer in (0..problem.num_layers).into_iter() {
+                        let shapes = trace_shapes.get(&layer).unwrap();
+                        let clearance_shapes = trace_clearance_shapes.get(&layer).unwrap();
+                        let colliders = trace_colliders.get(&layer).unwrap();
+                        let clearance_colliders = trace_clearance_colliders.get(&layer).unwrap();
+                        obstacle_shapes.get_mut(&layer).unwrap().extend(shapes.iter().cloned());
+                        obstacle_clearance_shapes
+                            .get_mut(&layer)
+                            .unwrap()
+                            .extend(clearance_shapes.iter().cloned());
+                        obstacle_colliders.get_mut(&layer).unwrap().extend(colliders.iter().cloned());
+                        obstacle_clearance_colliders
+                            .get_mut(&layer)
+                            .unwrap()
+                            .extend(clearance_colliders.iter().cloned());
                     }
+                    // let trace_segments = &fixed_trace.trace_path.segments;
+                    // for segment in trace_segments.iter() {
+                    //     let layer = segment.layer;
+                    //     let shapes = segment.to_shapes();
+                    //     let clearance_shapes = segment.to_clearance_shapes();
+                    //     let obstacle_shapes = obstacle_shapes.get_mut(&layer).unwrap();
+                    //     let obstacle_clearance_shapes =
+                    //         obstacle_clearance_shapes.get_mut(&layer).unwrap();
+                    //     let obstacle_colliders = obstacle_colliders.get_mut(&layer).unwrap();
+                    //     let obstacle_clearance_colliders =
+                    //         obstacle_clearance_colliders.get_mut(&layer).unwrap();
+                    //     for shape in shapes.iter() {
+                    //         obstacle_shapes.push(shape.clone());
+                    //         let collider = Collider::from_prim_shape(shape);
+                    //         obstacle_colliders.insert(collider);
+                    //     }
+                    //     for clearance_shape in clearance_shapes.iter() {
+                    //         obstacle_clearance_shapes.push(clearance_shape.clone());
+                    //         let clearance_collider = Collider::from_prim_shape(clearance_shape);
+                    //         obstacle_clearance_colliders.insert(clearance_collider);
+                    //     }
+                    // }
                 }
                 // add all sampled traces to the obstacle shapes
                 for (_, proba_trace_id) in sampled_obstacle_traces.iter() {
@@ -487,33 +496,7 @@ impl ProbaModel {
                             obstacle_clearance_colliders.insert(clearance_collider);
                         }
                     }
-                }
-                // add all pads in other nets to the obstacle shapes
-                // for obstacle_connection_id in obstacle_connections.iter() {
-                //     let connection = connections.get(obstacle_connection_id).unwrap();
-                //     let pad = &connection.sink;
-                //     let pad_layers = pad.pad_layer.get_iter(problem.num_layers);
-                //     let pad_shapes = pad.to_shapes();
-                //     let pad_clearance_shapes = pad.to_clearance_shapes();
-                //     for layer in pad_layers {
-                //         let obstacle_shapes = obstacle_shapes.get_mut(&layer).unwrap();
-                //         let obstacle_clearance_shapes =
-                //             obstacle_clearance_shapes.get_mut(&layer).unwrap();
-                //         let obstacle_colliders = obstacle_colliders.get_mut(&layer).unwrap();
-                //         let obstacle_clearance_colliders =
-                //             obstacle_clearance_colliders.get_mut(&layer).unwrap();
-                //         for shape in pad_shapes.iter() {
-                //             obstacle_shapes.push(shape.clone());
-                //             let collider = Collider::from_prim_shape(shape);
-                //             obstacle_colliders.insert(collider);
-                //         }
-                //         for clearance_shape in pad_clearance_shapes.iter() {
-                //             obstacle_clearance_shapes.push(clearance_shape.clone());
-                //             let clearance_collider = Collider::from_prim_shape(clearance_shape);
-                //             obstacle_clearance_colliders.insert(clearance_collider);
-                //         }
-                //     }
-                // }
+                }                
                 let obstacle_shapes = Rc::new(obstacle_shapes);
                 let obstacle_clearance_shapes = Rc::new(obstacle_clearance_shapes);
                 let obstacle_colliders: Rc<HashMap<usize, QuadTreeNode>> =

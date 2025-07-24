@@ -354,16 +354,26 @@ impl Via {
         });
         Collider::from_prim_shape(&clearance_shape)
     }
+    pub fn to_shape(&self) -> PrimShape {
+        let via_shape = PrimShape::Circle(CircleShape {
+            position: self.position.to_float(),
+            diameter: self.diameter,
+        });
+        via_shape
+    }
+    pub fn to_clearance_shape(&self) -> PrimShape {
+        PrimShape::Circle(CircleShape {
+            position: self.position.to_float(),
+            diameter: self.diameter + self.clearance * 2.0,
+        })
+    }
     pub fn to_renderables(&self, color: [f32; 4]) -> Vec<ShapeRenderable> {
         // let hole_shape = PrimShape::Circle(CircleShape {
         //     position: self.position.to_float(),
         //     diameter: self.diameter / 2.0, // The hole is half the diameter
         // });
         // let hole_color = [0.0, 0.0, 0.0, color[3]]; // Black hole
-        let via_shape = PrimShape::Circle(CircleShape {
-            position: self.position.to_float(),
-            diameter: self.diameter,
-        });
+        let via_shape = self.to_shape();
         // let hole_renderable = ShapeRenderable {
         //     shape: hole_shape,
         //     color: hole_color,
@@ -375,10 +385,7 @@ impl Via {
         vec![via_renderable]
     }
     pub fn to_clearance_renderables(&self, color: [f32; 4]) -> Vec<ShapeRenderable> {
-        let clearance_shape = PrimShape::Circle(CircleShape {
-            position: self.position.to_float(),
-            diameter: self.diameter + self.clearance * 2.0,
-        });
+        let clearance_shape = self.to_clearance_shape();
         vec![ShapeRenderable {
             shape: clearance_shape,
             color,
@@ -406,6 +413,41 @@ pub struct TracePath {
 // shrink?
 
 impl TracePath {
+    pub fn to_shapes(&self, num_layers: usize) -> HashMap<usize, Vec<PrimShape>> {
+        let mut shapes: HashMap<usize, Vec<PrimShape>> =
+            (0..num_layers).map(|layer| (layer, Vec::new())).collect();
+        for segment in &self.segments {
+            let segment_shapes = segment.to_shapes();
+            shapes
+                .get_mut(&segment.layer)
+                .unwrap()
+                .extend(segment_shapes);
+        }
+        for via in &self.vias {
+            let via_shape = via.to_shape();
+            for layer in via.min_layer..=via.max_layer {
+                shapes.get_mut(&layer).unwrap().push(via_shape.clone());
+            }
+        }
+        shapes
+    }
+    pub fn to_clearance_shapes(&self, num_layers: usize) -> HashMap<usize, Vec<PrimShape>> {
+        let mut shapes: HashMap<usize, Vec<PrimShape>> =
+            (0..num_layers).map(|layer| (layer, Vec::new())).collect();
+        for segment in &self.segments {
+            let segment_clearance_shapes = segment.to_clearance_shapes();
+            shapes
+                .get_mut(&segment.layer)
+                .unwrap().extend(segment_clearance_shapes);
+        }
+        for via in &self.vias {
+            let clearance_shape = via.to_clearance_shape();
+            for layer in via.min_layer..=via.max_layer {
+                shapes.get_mut(&layer).unwrap().push(clearance_shape.clone());
+            }
+        }
+        shapes
+    }
     pub fn to_colliders(&self, num_layers: usize) -> HashMap<usize, Vec<Collider>> {
         let mut colliders: HashMap<usize, Vec<Collider>> =
             (0..num_layers).map(|layer| (layer, Vec::new())).collect();

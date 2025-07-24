@@ -191,6 +191,11 @@ impl QuadTreeNode {
         };
         true
     }
+    pub fn extend(&mut self, colliders: impl Iterator<Item = Collider>) {
+        for collider in colliders {
+            self.insert(collider);
+        }
+    }
 
     pub fn collides_with(&self, collider: &Collider) -> bool {
         // query all the shapes that have a potential to collide with the given shape

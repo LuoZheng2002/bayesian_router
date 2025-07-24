@@ -1,9 +1,9 @@
 use std::{cell::RefCell, cmp::Reverse, collections::{BinaryHeap, HashMap, VecDeque}, hash::Hash, rc::Rc, sync::{Arc, Mutex}};
 
 use ordered_float::NotNan;
-use shared::{binary_heap_item::BinaryHeapItem, pad::{Pad, PadName}, pcb_problem::{Connection, ConnectionID, FixedTrace, NetInfo, PcbProblem, PcbSolution}, pcb_render_model::PcbRenderModel, trace_path::TracePath};
+use shared::{binary_heap_item::BinaryHeapItem, collider::Collider, pad::{Pad, PadName}, pcb_problem::{Connection, ConnectionID, FixedTrace, NetInfo, PcbProblem, PcbSolution}, pcb_render_model::PcbRenderModel, prim_shape::PrimShape, trace_path::TracePath};
 
-use crate::astar::{self, AStarModel};
+use crate::{astar::{self, AStarModel}, quad_tree::QuadTreeNode};
 
 
 
@@ -22,8 +22,9 @@ impl NaiveBacktrackNode{
             fixed_connections: HashMap::new(),
         }
     }
-    pub fn add_fixed_connection(&self, connection: ConnectionID, trace: TracePath) -> Self {
+    pub fn push_node(&mut self, connection: ConnectionID, trace: TracePath) -> Self {
         assert!(connection == self.current_connection.unwrap(), "Cannot add a fixed connection that is not the current connection");
+        self.current_connection = None; // reset current connection
         let mut fixed_connections = self.fixed_connections.clone();
         fixed_connections.insert(connection, trace);
         NaiveBacktrackNode {
@@ -34,10 +35,82 @@ impl NaiveBacktrackNode{
     }
 }
 
-pub fn naive_backtrack(pcb_problem: &PcbProblem, pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>) -> Result<PcbSolution, String> {
+pub fn naive_backtrack(problem: &PcbProblem, pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>) -> Result<PcbSolution, String> {
+    // prepare the obstacles for the first A* run
+    
+                
+    let quad_tree_side_length = f32::max(problem.width as f32, problem.height as f32);
+    let quad_tree_x_min = problem.center.x as f32 - quad_tree_side_length / 2.0;
+    let quad_tree_x_max = problem.center.x as f32 + quad_tree_side_length / 2.0;
+    let quad_tree_y_min = problem.center.y as f32 - quad_tree_side_length / 2.0;
+    let quad_tree_y_max = problem.center.y as f32 + quad_tree_side_length / 2.0;
     let mut connection_to_length: HashMap<ConnectionID, NotNan<f32>> = HashMap::new();
-    for net_info in pcb_problem.nets.values() {
-
+    for (net_name, net_info) in problem.nets.iter() {
+        // obstacles are pads
+        let mut obstacle_shapes: HashMap<usize, Vec<PrimShape>> = (0..problem.num_layers)
+            .map(|layer| (layer, Vec::new()))
+            .collect();
+        let mut obstacle_clearance_shapes: HashMap<usize, Vec<PrimShape>> = (0..problem
+            .num_layers)
+            .map(|layer| (layer, Vec::new()))
+            .collect();
+        let mut obstacle_colliders: HashMap<usize, QuadTreeNode> = (0..problem.num_layers)
+            .map(|layer| {
+                (
+                    layer,
+                    QuadTreeNode::new(
+                        quad_tree_x_min,
+                        quad_tree_x_max,
+                        quad_tree_y_min,
+                        quad_tree_y_max,
+                        0,
+                    ),
+                )
+            })
+            .collect();
+        let mut obstacle_clearance_colliders: HashMap<usize, QuadTreeNode> = (0..problem
+            .num_layers)
+            .map(|layer| {
+                (
+                    layer,
+                    QuadTreeNode::new(
+                        quad_tree_x_min,
+                        quad_tree_x_max,
+                        quad_tree_y_min,
+                        quad_tree_y_max,
+                        0,
+                    ),
+                )
+            })
+            .collect();
+        for (_, net_info) in problem
+            .nets
+            .iter()
+            .filter(|(other_net_id, _)| **other_net_id != *net_name)
+        {
+            for pad in net_info.pads.values(){
+                let pad_layers = pad.pad_layer.get_iter(problem.num_layers);
+                for layer in pad_layers{
+                    let pad_shapes = pad.to_shapes();
+                    let pad_clearance_shapes = pad.to_clearance_shapes();                    
+                    for pad_shape in pad_shapes.iter() {
+                        let pad_collider = Collider::from_prim_shape(pad_shape);
+                        obstacle_colliders.get_mut(&layer).unwrap().insert(pad_collider);
+                    }
+                    for pad_clearance_shape in pad_clearance_shapes.iter() {
+                        let pad_clearance_collider = Collider::from_prim_shape(pad_clearance_shape);
+                        obstacle_clearance_colliders.get_mut(&layer).unwrap().insert(pad_clearance_collider);
+                    }
+                    obstacle_shapes.get_mut(&layer).unwrap().extend(pad_shapes);
+                    obstacle_clearance_shapes.get_mut(&layer).unwrap().extend(pad_clearance_shapes);
+                }
+            }
+        }
+        let obstacle_shapes = Rc::new(obstacle_shapes);
+        let obstacle_clearance_shapes = Rc::new(obstacle_clearance_shapes);
+        let obstacle_colliders = Rc::new(obstacle_colliders);
+        let obstacle_clearance_colliders = Rc::new(obstacle_clearance_colliders);
+        
         for connection in net_info.connections.values() {
             let start_pad = net_info.pads.get(&connection.start_pad).unwrap();
             let end_pad = net_info.pads.get(&connection.end_pad).unwrap();
@@ -45,22 +118,24 @@ pub fn naive_backtrack(pcb_problem: &PcbProblem, pcb_render_model: Arc<Mutex<Opt
             let end = end_pad.position.to_fixed().to_nearest_even_even();
             let start_layers = start_pad.pad_layer;
             let end_layers = end_pad.pad_layer;
+
+            
             let astar_model = AStarModel {
                 start,
                 end,
                 start_layers,
                 end_layers,
-                num_layers: pcb_problem.num_layers,
+                num_layers: problem.num_layers,
                 trace_width: net_info.trace_width,
                 trace_clearance: net_info.trace_clearance,
                 via_diameter: net_info.via_diameter,
-                width: pcb_problem.width,
-                height: pcb_problem.height,
-                center: pcb_problem.center,
-                obstacle_shapes: ,
-                obstacle_clearance_shapes: Vec::new(),
-                obstacle_colliders: Vec::new(),
-                obstacle_clearance_colliders: Vec::new(),
+                width: problem.width,
+                height: problem.height,
+                center: problem.center,
+                obstacle_shapes: obstacle_shapes.clone(),
+                obstacle_clearance_shapes: obstacle_clearance_shapes.clone(),
+                obstacle_colliders: obstacle_colliders.clone(),
+                obstacle_clearance_colliders: obstacle_clearance_colliders.clone(),
                 border_colliders_cache: RefCell::new(None),
                 border_shapes_cache: RefCell::new(None),
             };
@@ -75,27 +150,31 @@ pub fn naive_backtrack(pcb_problem: &PcbProblem, pcb_render_model: Arc<Mutex<Opt
             connection_to_length.insert(connection.connection_id, NotNan::new(result.trace_path.total_length as f32).unwrap());
         }
     }
-    let connection_heap: BinaryHeap<BinaryHeapItem<Reverse<NotNan<f32>>, ConnectionID>> = BinaryHeap::new();
+    let mut connection_heap: BinaryHeap<BinaryHeapItem<Reverse<NotNan<f32>>, ConnectionID>> = BinaryHeap::new();
     for (connection_id, length) in connection_to_length.iter() {
         connection_heap.push(BinaryHeapItem::new(Reverse(*length), *connection_id));
     }
     let ordered_connection_vec: Vec<ConnectionID> = connection_heap.drain().map(|item| item.value).collect();
 
-    let backtrack_stack: Vec<NaiveBacktrackNode> = Vec::new();
+    let mut backtrack_stack: Vec<NaiveBacktrackNode> = Vec::new();
 
     let root_node = NaiveBacktrackNode::new_empty(&ordered_connection_vec);
     backtrack_stack.push(root_node);
 
-    let connections: HashMap<ConnectionID, Rc<Connection>> = pcb_problem.nets.values()
+    let connections: HashMap<ConnectionID, Rc<Connection>> = problem.nets.values()
         .flat_map(|net_info| net_info.connections.iter())
         .map(|(id, connection)| (*id, connection.clone()))
         .collect();
-    let pads: HashMap<PadName, &Pad> = pcb_problem.nets.values()
+    let pads: HashMap<PadName, &Pad> = problem.nets.values()
         .flat_map(|net_info| net_info.pads.iter())
         .map(|(name, pad)| (name.clone(), pad))
         .collect();
-    let connection_to_net_info: HashMap<ConnectionID, &NetInfo> = pcb_problem.nets.iter()
-        .flat_map(|(_, net_info)| net_info.connections.iter().map(|(id, _)| (*id, net_info)))
+    let connection_to_net_info: HashMap<ConnectionID, &NetInfo> = problem.nets.iter()
+        .flat_map(|(net_name, net_info)| {
+            net_info.connections.iter().map(move |(connection_id, _)| {
+                (*connection_id, net_info)
+            })
+        })
         .collect();
 
     // dfs
@@ -118,15 +197,101 @@ pub fn naive_backtrack(pcb_problem: &PcbProblem, pcb_render_model: Arc<Mutex<Opt
                 .collect();
             let pcb_solution = PcbSolution{
                 determined_traces: fixed_traces,
-                scale_down_factor: pcb_problem.scale_down_factor,
+                scale_down_factor: problem.scale_down_factor,
             };
             return Ok(pcb_solution);
         }
+        // select the next connection
         top_node.current_connection = Some(top_node.alternative_connections.pop_front().unwrap());
+        let current_connection = top_node.current_connection.unwrap();
         
         // let is_current_connection_valid: bool = todo!();
 
-        let connection = connections.get(&top_node.current_connection).unwrap();
+        // here: prepare the obstacles for current connection with fixed traces
+        let current_net_name = connections.get(&current_connection).unwrap().net_name.clone();
+        let mut obstacle_shapes: HashMap<usize, Vec<PrimShape>> = (0..problem.num_layers)
+            .map(|layer| (layer, Vec::new()))
+            .collect();
+        let mut obstacle_clearance_shapes: HashMap<usize, Vec<PrimShape>> = (0..problem
+            .num_layers)
+            .map(|layer| (layer, Vec::new()))
+            .collect();
+        let mut obstacle_colliders: HashMap<usize, QuadTreeNode> = (0..problem.num_layers)
+            .map(|layer| {
+                (
+                    layer,
+                    QuadTreeNode::new(
+                        quad_tree_x_min,
+                        quad_tree_x_max,
+                        quad_tree_y_min,
+                        quad_tree_y_max,
+                        0,
+                    ),
+                )
+            })
+            .collect();
+        let mut obstacle_clearance_colliders: HashMap<usize, QuadTreeNode> = (0..problem
+            .num_layers)
+            .map(|layer| {
+                (
+                    layer,
+                    QuadTreeNode::new(
+                        quad_tree_x_min,
+                        quad_tree_x_max,
+                        quad_tree_y_min,
+                        quad_tree_y_max,
+                        0,
+                    ),
+                )
+            })
+            .collect();
+        // add all pads from other nets
+        for (_, net_info) in problem
+            .nets
+            .iter()
+            .filter(|(other_net_id, _)| **other_net_id != current_net_name)
+        {
+            for pad in net_info.pads.values(){
+                let pad_layers = pad.pad_layer.get_iter(problem.num_layers);
+                for layer in pad_layers{
+                    let pad_shapes = pad.to_shapes();
+                    let pad_clearance_shapes = pad.to_clearance_shapes();    
+                    let pad_colliders = pad_shapes.iter()
+                        .map(|shape| Collider::from_prim_shape(shape));
+                    let pad_clearance_colliders = pad_clearance_shapes.iter()
+                        .map(|shape| Collider::from_prim_shape(shape));
+                    obstacle_colliders.get_mut(&layer).unwrap().extend(pad_colliders);
+                    obstacle_clearance_colliders.get_mut(&layer).unwrap().extend(pad_clearance_colliders);
+                    obstacle_shapes.get_mut(&layer).unwrap().extend(pad_shapes);
+                    obstacle_clearance_shapes.get_mut(&layer).unwrap().extend(pad_clearance_shapes);                    
+                }
+            }
+        }
+        // add fixed traces
+        for (connection_id, trace_path) in top_node.fixed_connections.iter(){
+            let connection_net_name = connections.get(connection_id).unwrap().net_name.clone();
+            if current_net_name != connection_net_name {
+                let trace_shapes = trace_path.to_shapes(problem.num_layers);
+                let trace_clearance_shapes = trace_path.to_clearance_shapes(problem.num_layers);
+                let trace_colliders = trace_path.to_colliders(problem.num_layers);
+                let trace_clearance_colliders = trace_path.to_clearance_colliders(problem.num_layers);
+                for layer in (0..problem.num_layers).into_iter() {
+                    let shapes = trace_shapes.get(&layer).unwrap();
+                    let clearance_shapes = trace_clearance_shapes.get(&layer).unwrap();
+                    let colliders = trace_colliders.get(&layer).unwrap();
+                    let clearance_colliders = trace_clearance_colliders.get(&layer).unwrap();
+                    obstacle_shapes.get_mut(&layer).unwrap().extend(shapes.iter().cloned());
+                    obstacle_clearance_shapes.get_mut(&layer).unwrap().extend(clearance_shapes.iter().cloned());
+                    obstacle_colliders.get_mut(&layer).unwrap().extend(colliders.iter().cloned());
+                    obstacle_clearance_colliders.get_mut(&layer).unwrap().extend(clearance_colliders.iter().cloned());
+                }
+            }            
+        }
+        let obstacle_shapes = Rc::new(obstacle_shapes);
+        let obstacle_clearance_shapes = Rc::new(obstacle_clearance_shapes);
+        let obstacle_colliders = Rc::new(obstacle_colliders);
+        let obstacle_clearance_colliders = Rc::new(obstacle_clearance_colliders);
+        let connection = connections.get(&current_connection).unwrap();
         let start_pad = pads.get(&connection.start_pad).unwrap();
         let end_pad = pads.get(&connection.end_pad).unwrap();
         let start = start_pad.position.to_fixed().to_nearest_even_even();
@@ -139,17 +304,17 @@ pub fn naive_backtrack(pcb_problem: &PcbProblem, pcb_render_model: Arc<Mutex<Opt
             end,
             start_layers,
             end_layers,
-            num_layers: pcb_problem.num_layers,
+            num_layers: problem.num_layers,
             trace_width: net_info.trace_width,
             trace_clearance: net_info.trace_clearance,
             via_diameter: net_info.via_diameter,
-            width: pcb_problem.width,
-            height: pcb_problem.height,
-            center: pcb_problem.center,
-            obstacle_shapes: None,
-            obstacle_clearance_shapes: None,
-            obstacle_colliders: None,
-            obstacle_clearance_colliders: None,
+            width: problem.width,
+            height: problem.height,
+            center: problem.center,
+            obstacle_shapes: obstacle_shapes.clone(),
+            obstacle_clearance_shapes: obstacle_clearance_shapes.clone(),
+            obstacle_colliders: obstacle_colliders.clone(),
+            obstacle_clearance_colliders: obstacle_clearance_colliders.clone(),
             border_colliders_cache: RefCell::new(None),
             border_shapes_cache: RefCell::new(None),
         };
@@ -162,36 +327,9 @@ pub fn naive_backtrack(pcb_problem: &PcbProblem, pcb_render_model: Arc<Mutex<Opt
                 continue;
             }
         };
-        if 
 
-        let mut new_fixed_traces: HashMap<ConnectionID, TracePath> = todo!();
-
-
-        // Check if the top node is a solution
-        if top_node.is_solution(pcb_problem) {
-            println!("Found a solution!");
-            // If the top node is a solution, we can return it
-            let fixed_traces = top_node.fixed_connections.clone();
-            let solution = PcbSolution {
-                fixed_traces,
-                pcb_render_model: pcb_render_model.clone(),
-            };
-            return Ok(solution);
-        }
-
-        // Expand the current node
-        let next_nodes = top_node.expand(pcb_problem);
-
-        if next_nodes.is_empty() {
-            // If there are no next nodes, we backtrack by popping the current node
-            node_stack.pop();
-        } else {
-            // Otherwise, we push the next nodes onto the stack
-            for next_node in next_nodes {
-                node_stack.push(next_node);
-            }
-        }
+        let new_node = top_node.push_node(current_connection, result.trace_path);
+        backtrack_stack.push(new_node);  
     }
-
     Err("No solution found".to_string())
 }
