@@ -18,7 +18,7 @@ use crate::{
 use shared::{
     binary_heap_item::BinaryHeapItem,
     collider::{BorderCollider, Collider},
-    hyperparameters::{ASTAR_STRIDE, ESTIMATE_COEFFICIENT, MAX_TRIALS, VIA_COST},
+    hyperparameters::{ASTAR_STRIDE, ESTIMATE_COEFFICIENT, MAX_TRIALS, SAMPLE_CNT, VIA_COST},
     octile_distance::octile_distance_fixed,
     pad::PadLayer,
     pcb_render_model::{
@@ -997,6 +997,8 @@ impl AStarModel {
         &self,
         pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>,
     ) -> Result<AStarResult, String> {
+        println!("Running A*");
+        SAMPLE_CNT.fetch_add(1, Ordering::SeqCst);
         assert!(self.start.is_sum_even());
         assert!(self.end.is_sum_even());
         assert!(!self.start.is_x_odd_y_odd());

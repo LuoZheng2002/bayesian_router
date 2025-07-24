@@ -601,7 +601,6 @@ impl ProbaModel {
                         border_colliders_cache: RefCell::new(None), // Cache for border points, initialized to None
                         border_shapes_cache: RefCell::new(None), // Cache for border shapes, initialized to None
                     };
-                    SAMPLE_CNT.fetch_add(1, Ordering::SeqCst);
                     // run A* algorithm to find a path
                     let astar_result = astar_model.run(pcb_render_model.clone());
                     let astar_result = match astar_result {

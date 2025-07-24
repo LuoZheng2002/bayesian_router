@@ -9,3 +9,4 @@ pub mod quad_tree;
 pub mod test_pcb_problem;
 pub mod astar_check_struct;
 pub mod naive_backtrack_algo;
+pub mod bayesian_backtrack_algo;

@@ -7,7 +7,7 @@ use cgmath::Deg;
 
 use parser::{parse_end_to_end::{parse_end_to_end, parse_start_to_dsn_struct, parse_struct_to_end}, write_ses::write_ses};
 use router::{
-    pcb_problem_solve::solve_pcb_problem,
+    naive_backtrack_algo::naive_backtrack, pcb_problem_solve::solve_pcb_problem
 };
 use shared::pcb_render_model::PcbRenderModel;
 
@@ -30,7 +30,7 @@ pub fn working_thread_fn(pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>) {
             exit(-1);
         }
     };
-    let result = solve_pcb_problem(&pcb_problem, pcb_render_model.clone());
+    let result = solve_pcb_problem(&pcb_problem, pcb_render_model.clone(), false);
     let result = match result {
         Ok(result) => {
             println!("PCB problem solved successfully");
