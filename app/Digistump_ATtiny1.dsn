@@ -13,13 +13,7 @@
       (property
         (index 0)
       )
-    )
-    (layer B.Cu
-      (type signal)
-      (property
-        (index 1)
-      )
-    )
+    )    
     (boundary
       (path pcb 0  150222 -150049  112414 -150049  112414 -138049  150222 -138049
             150222 -150049)

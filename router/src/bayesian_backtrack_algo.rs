@@ -28,17 +28,11 @@ pub struct TraceCache{
 pub fn bayesian_backtrack(
     pcb_problem: &PcbProblem,
     pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>,
+    trace_cache: &mut TraceCache,
 ) -> Result<PcbSolution, String> {
     let connections = pcb_problem.nets.iter()
         .flat_map(|(_, net_info)| net_info.connections.keys().cloned())
         .collect::<Vec<_>>();
-    let mut trace_cache = TraceCache {
-        traces: connections.iter()
-            .map(|connection_id| (connection_id.clone(), Vec::new()))
-            .collect::<HashMap<_, _>>(),
-    };
-
-
     let mut node_stack: Vec<BacktrackNode> = Vec::new();
 
     fn last_updated_node_index(node_stack: &Vec<BacktrackNode>) -> usize {
@@ -132,7 +126,7 @@ pub fn bayesian_backtrack(
     }
 
     let first_node =
-        BacktrackNode::from_fixed_traces(pcb_problem, &HashMap::new(), Vec::new(), pcb_render_model.clone(), &mut trace_cache);
+        BacktrackNode::from_fixed_traces(pcb_problem, &HashMap::new(), Vec::new(), pcb_render_model.clone(), trace_cache);
     // assume the first node has trace candidates
     node_stack.push(first_node);
 
@@ -169,7 +163,7 @@ pub fn bayesian_backtrack(
             // assert!(new_node.prob_up_to_date, "New node must be up to date");
             let mut new_node = new_node.unwrap();
             if node_stack.len() % UPDATE_PROBA_SKIP_STRIDE == 0 {
-                let result = new_node.try_update_proba_model(pcb_problem, pcb_render_model.clone(), &mut trace_cache);
+                let result = new_node.try_update_proba_model(pcb_problem, pcb_render_model.clone(), trace_cache);
                 if let Err(err) = result {
                     println!("Failed to update the probabilistic model: {}", err);
                     panic!("Failed to update the probabilistic model");
@@ -261,7 +255,7 @@ pub fn bayesian_backtrack(
     println!("Number of samples taken by Bayesian backtrack: {}", SAMPLE_CNT.load(Ordering::SeqCst));
     SAMPLE_CNT.store(0, Ordering::SeqCst);
     assert!(heuristics.is_some(), "Heuristics must be set before calling naive backtrack");
-    let result = naive_backtrack(pcb_problem, pcb_render_model, heuristics);
+    let result = naive_backtrack(pcb_problem, pcb_render_model, trace_cache, heuristics);
     println!("Number of samples taken by Naive backtrack: {}", SAMPLE_CNT.load(Ordering::SeqCst));
     SAMPLE_CNT.store(0, Ordering::SeqCst);
     result

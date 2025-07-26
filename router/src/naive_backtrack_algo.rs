@@ -1,15 +1,16 @@
 use std::{cell::RefCell, cmp::Reverse, collections::{BinaryHeap, HashMap, VecDeque}, hash::Hash, rc::Rc, sync::{atomic::Ordering, Arc, Mutex}, thread, time::Duration};
 
 use ordered_float::NotNan;
-use shared::{binary_heap_item::BinaryHeapItem, collider::Collider, color_float3::ColorFloat3, pad::{Pad, PadName}, pcb_problem::{Connection, ConnectionID, FixedTrace, NetInfo, NetName, PcbProblem, PcbSolution}, pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable}, prim_shape::PrimShape, trace_path::TracePath};
+use shared::{binary_heap_item::BinaryHeapItem, collider::Collider, color_float3::ColorFloat3, hyperparameters::SAMPLE_CNT, pad::{Pad, PadName}, pcb_problem::{Connection, ConnectionID, FixedTrace, NetInfo, NetName, PcbProblem, PcbSolution}, pcb_render_model::{PcbRenderModel, RenderableBatch, ShapeRenderable}, prim_shape::PrimShape, trace_path::{self, TracePath}};
 
-use crate::{astar::{self, AStarModel}, command_flags::{CommandFlag, COMMAND_CVS, COMMAND_LEVEL, COMMAND_MUTEXES}, quad_tree::QuadTreeNode};
+use crate::{astar::{self, AStarModel}, astar_check_struct::AStarCheck, bayesian_backtrack_algo::TraceCache, command_flags::{CommandFlag, COMMAND_CVS, COMMAND_LEVEL, COMMAND_MUTEXES}, quad_tree::QuadTreeNode};
 
 
 
 pub struct NaiveBacktrackNode{
     pub current_connection: Option<ConnectionID>,
     pub alternative_connections: VecDeque<ConnectionID>,
+    pub failed_connections: Vec<ConnectionID>, // connections that fail to become current_connection
     pub fixed_connections: HashMap<ConnectionID, FixedTrace>,
 }
 impl NaiveBacktrackNode{
@@ -20,17 +21,24 @@ impl NaiveBacktrackNode{
             current_connection: None,
             alternative_connections,
             fixed_connections: HashMap::new(),
+            failed_connections: Vec::new(),
         }
     }
     pub fn push_node(&mut self, connection: ConnectionID, fixed_trace: FixedTrace) -> Self {
         assert!(connection == self.current_connection.unwrap(), "Cannot add a fixed connection that is not the current connection");
-        self.current_connection = None; // reset current connection
-        let mut fixed_connections = self.fixed_connections.clone();
-        fixed_connections.insert(connection, fixed_trace);
+        self.current_connection = None; // reset current connection        
+        let mut new_fixed_connections = self.fixed_connections.clone();
+        new_fixed_connections.insert(connection, fixed_trace);
+        let mut new_alternative_connections = self.alternative_connections.clone();
+        for failed_connection in self.failed_connections.iter() {
+            new_alternative_connections.push_front(*failed_connection);
+        }
+        self.failed_connections.push(connection); // add the current connection to failed connections
         NaiveBacktrackNode {
-            fixed_connections,
+            fixed_connections: new_fixed_connections,
             current_connection: None,
-            alternative_connections: self.alternative_connections.clone(),
+            alternative_connections: new_alternative_connections,
+            failed_connections: Vec::new(), // reset failed connections
         }
     }
 }
@@ -44,7 +52,7 @@ fn node_to_pcb_render_model(problem: &PcbProblem, node: &NaiveBacktrackNode) -> 
         net_name_to_color.insert(net_info.net_name.clone(), net_info.color);
         for pad in net_info.pads.values(){
             let pad_renderables = pad.to_renderables(net_info.color.to_float4(1.0));
-            let pad_clearance_renderables = pad.to_clearance_renderables(net_info.color.to_float4(1.0));
+            let pad_clearance_renderables = pad.to_clearance_renderables(net_info.color.to_float4(0.5));
             pad_shape_renderables.extend(pad_renderables);
             pad_shape_renderables.extend(pad_clearance_renderables);
         }
@@ -97,9 +105,12 @@ fn display_when_necessary(
 }
 pub fn naive_backtrack(problem: &PcbProblem, 
     pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>,
+    trace_cache: &mut TraceCache,
     heuristics: Option<Vec<ConnectionID>>,
 ) -> Result<PcbSolution, String> {
     // prepare the obstacles for the first A* run    
+    let border_colliders = AStarModel::calculate_border_colliders(problem.width, problem.height, problem.center);
+        
     let quad_tree_side_length = f32::max(problem.width as f32, problem.height as f32);
         let quad_tree_x_min = problem.center.x as f32 - quad_tree_side_length / 2.0;
         let quad_tree_x_max = problem.center.x as f32 + quad_tree_side_length / 2.0;
@@ -177,42 +188,65 @@ pub fn naive_backtrack(problem: &PcbProblem,
             let obstacle_clearance_colliders = Rc::new(obstacle_clearance_colliders);
             
             for connection in net_info.connections.values() {
-                let start_pad = net_info.pads.get(&connection.start_pad).unwrap();
-                let end_pad = net_info.pads.get(&connection.end_pad).unwrap();
-                let start = start_pad.position.to_fixed().to_nearest_even_even();
-                let end = end_pad.position.to_fixed().to_nearest_even_even();
-                let start_layers = start_pad.pad_layer;
-                let end_layers = end_pad.pad_layer;
-
-                
-                let astar_model = AStarModel {
-                    start,
-                    end,
-                    start_layers,
-                    end_layers,
-                    num_layers: problem.num_layers,
-                    trace_width: net_info.trace_width,
-                    trace_clearance: net_info.trace_clearance,
-                    via_diameter: net_info.via_diameter,
-                    width: problem.width,
-                    height: problem.height,
-                    center: problem.center,
-                    obstacle_shapes: obstacle_shapes.clone(),
-                    obstacle_clearance_shapes: obstacle_clearance_shapes.clone(),
-                    obstacle_colliders: obstacle_colliders.clone(),
-                    obstacle_clearance_colliders: obstacle_clearance_colliders.clone(),
-                    border_colliders_cache: RefCell::new(None),
-                    border_shapes_cache: RefCell::new(None),
-                };
-                let result = astar_model.run(pcb_render_model.clone());
-                let result = match result{
-                    Ok(result) => result,
-                    Err(e) => {
-                        println!("A star algorithm failed");
-                        panic!("A star algorithm failed");
+                let mut trace_path: Option<TracePath> = None;
+                let current_connection_trace_cache = trace_cache.traces.get_mut(&connection.connection_id).unwrap();
+                for cache_trace_path in current_connection_trace_cache.iter() {
+                    let astar_check = AStarCheck{
+                        border_colliders: border_colliders.clone(),
+                        obstacle_colliders: obstacle_colliders.clone(),
+                        obstacle_clearance_colliders: obstacle_clearance_colliders.clone(),
+                        solution_trace: cache_trace_path.clone(),
+                        num_layers: problem.num_layers,
+                    };
+                    if astar_check.check() {
+                        println!("Cache Hit!");                            
+                        trace_path = Some(cache_trace_path.clone());
+                        break; // we found a trace that satisfies the constraints, no need to generate a new one
+                    }else{
+                        println!("Cache Miss!");
                     }
+                }
+                let trace_path = if let Some(trace_path) = trace_path{
+                    trace_path
+                }else{
+                    // run A* algorithm
+                    let start_pad = net_info.pads.get(&connection.start_pad).unwrap();
+                    let end_pad = net_info.pads.get(&connection.end_pad).unwrap();
+                    let start = start_pad.position.to_fixed().to_nearest_even_even();
+                    let end = end_pad.position.to_fixed().to_nearest_even_even();
+                    let start_layers = start_pad.pad_layer;
+                    let end_layers = end_pad.pad_layer;                    
+                    let astar_model = AStarModel {
+                        start,
+                        end,
+                        start_layers,
+                        end_layers,
+                        num_layers: problem.num_layers,
+                        trace_width: net_info.trace_width,
+                        trace_clearance: net_info.trace_clearance,
+                        via_diameter: net_info.via_diameter,
+                        width: problem.width,
+                        height: problem.height,
+                        center: problem.center,
+                        obstacle_shapes: obstacle_shapes.clone(),
+                        obstacle_clearance_shapes: obstacle_clearance_shapes.clone(),
+                        obstacle_colliders: obstacle_colliders.clone(),
+                        obstacle_clearance_colliders: obstacle_clearance_colliders.clone(),
+                        border_colliders_cache: RefCell::new(None),
+                        border_shapes_cache: RefCell::new(None),
+                    };
+                    let result = astar_model.run(pcb_render_model.clone());
+                    let result = match result{
+                        Ok(result) => result,
+                        Err(e) => {
+                            println!("A star algorithm failed");
+                            panic!("A star algorithm failed");
+                        }
+                    };
+                    current_connection_trace_cache.push(result.trace_path.clone());
+                    result.trace_path
                 };
-                connection_to_length.insert(connection.connection_id, NotNan::new(result.trace_path.total_length as f32).unwrap());
+                connection_to_length.insert(connection.connection_id, NotNan::new(trace_path.total_length as f32).unwrap());
             }
         }
         let mut connection_heap: BinaryHeap<BinaryHeapItem<Reverse<NotNan<f32>>, ConnectionID>> = BinaryHeap::new();
@@ -222,6 +256,7 @@ pub fn naive_backtrack(problem: &PcbProblem,
         let ordered_connection_vec: Vec<ConnectionID> = connection_heap.drain().map(|item| item.value).collect();
         ordered_connection_vec
     };
+    SAMPLE_CNT.store(0, Ordering::Relaxed);
     let mut backtrack_stack: Vec<NaiveBacktrackNode> = Vec::new();
 
     let root_node = NaiveBacktrackNode::new_empty(&ordered_connection_vec);
@@ -244,13 +279,32 @@ pub fn naive_backtrack(problem: &PcbProblem,
         .collect();
 
     // dfs
+    fn print_top_node(top_node: &NaiveBacktrackNode) {
+        print!("Top node: fixed_connections: ");
+        for connection_id in top_node.fixed_connections.keys() {
+            print!("{},", connection_id.0);
+        }
+        print!("current connection: {:?}, ", top_node.current_connection);
+        print!("alternative connections: ");
+        for connection_id in top_node.alternative_connections.iter() {
+            print!("{},", connection_id.0);
+        }
+        println!();
+    }
+
     while !backtrack_stack.is_empty() {
         // Get the top node from the stack
+        
         let top_node = backtrack_stack.last_mut().unwrap();
+        print_top_node(top_node);
         assert!(top_node.current_connection.is_none());
 
         display_when_necessary(&top_node, &problem, pcb_render_model.clone());
         if top_node.alternative_connections.is_empty() {
+            if !top_node.failed_connections.is_empty() {
+                println!("No more alternative connections but have failed connections, fail to solve");
+                return Err("Failed to solve PCB problem: No more alternative connections but have failed connections".to_string());
+            }
             // is solution
             let fixed_connections = std::mem::take(&mut top_node.fixed_connections);
             let fixed_traces: HashMap<ConnectionID, FixedTrace> = fixed_connections.into_iter()
@@ -356,46 +410,73 @@ pub fn naive_backtrack(problem: &PcbProblem,
         let obstacle_clearance_shapes = Rc::new(obstacle_clearance_shapes);
         let obstacle_colliders = Rc::new(obstacle_colliders);
         let obstacle_clearance_colliders = Rc::new(obstacle_clearance_colliders);
-        let connection = connections.get(&current_connection).unwrap();
-        let start_pad = pads.get(&connection.start_pad).unwrap();
-        let end_pad = pads.get(&connection.end_pad).unwrap();
-        let start = start_pad.position.to_fixed().to_nearest_even_even();
-        let end = end_pad.position.to_fixed().to_nearest_even_even();
-        let start_layers = start_pad.pad_layer;
-        let end_layers = end_pad.pad_layer;
-        let net_info = connection_to_net_info.get(&connection.connection_id).unwrap();
-        let astar_model = AStarModel {
-            start,
-            end,
-            start_layers,
-            end_layers,
-            num_layers: problem.num_layers,
-            trace_width: net_info.trace_width,
-            trace_clearance: net_info.trace_clearance,
-            via_diameter: net_info.via_diameter,
-            width: problem.width,
-            height: problem.height,
-            center: problem.center,
-            obstacle_shapes: obstacle_shapes.clone(),
-            obstacle_clearance_shapes: obstacle_clearance_shapes.clone(),
-            obstacle_colliders: obstacle_colliders.clone(),
-            obstacle_clearance_colliders: obstacle_clearance_colliders.clone(),
-            border_colliders_cache: RefCell::new(None),
-            border_shapes_cache: RefCell::new(None),
-        };
-        let result = astar_model.run(pcb_render_model.clone());
-        let result = match result {
-            Ok(result) => result,
-            Err(e) => {
-                println!("Cannot find a path for connection {:?}, popping node", connection.connection_id);
-                backtrack_stack.pop();
-                continue;
+
+
+        // check cache first
+        let mut trace_path: Option<TracePath> = None;
+        let current_connection_trace_cache = trace_cache.traces.get_mut(&current_connection).unwrap();
+        for cache_trace_path in current_connection_trace_cache.iter() {
+            let astar_check = AStarCheck{
+                border_colliders: border_colliders.clone(),
+                obstacle_colliders: obstacle_colliders.clone(),
+                obstacle_clearance_colliders: obstacle_clearance_colliders.clone(),
+                solution_trace: cache_trace_path.clone(),
+                num_layers: problem.num_layers,
+            };
+            if astar_check.check() {
+                println!("Cache Hit!");                            
+                trace_path = Some(cache_trace_path.clone());
+                break; // we found a trace that satisfies the constraints, no need to generate a new one
+            }else{
+                println!("Cache Miss!");
             }
+        }
+        let connection = connections.get(&current_connection).unwrap();
+        let trace_path = if let Some(trace_path) = trace_path{
+            trace_path
+        }else{            
+            let start_pad = pads.get(&connection.start_pad).unwrap();
+            let end_pad = pads.get(&connection.end_pad).unwrap();
+            let start = start_pad.position.to_fixed().to_nearest_even_even();
+            let end = end_pad.position.to_fixed().to_nearest_even_even();
+            let start_layers = start_pad.pad_layer;
+            let end_layers = end_pad.pad_layer;
+            let net_info = connection_to_net_info.get(&connection.connection_id).unwrap();
+            let astar_model = AStarModel {
+                start,
+                end,
+                start_layers,
+                end_layers,
+                num_layers: problem.num_layers,
+                trace_width: net_info.trace_width,
+                trace_clearance: net_info.trace_clearance,
+                via_diameter: net_info.via_diameter,
+                width: problem.width,
+                height: problem.height,
+                center: problem.center,
+                obstacle_shapes: obstacle_shapes.clone(),
+                obstacle_clearance_shapes: obstacle_clearance_shapes.clone(),
+                obstacle_colliders: obstacle_colliders.clone(),
+                obstacle_clearance_colliders: obstacle_clearance_colliders.clone(),
+                border_colliders_cache: RefCell::new(None),
+                border_shapes_cache: RefCell::new(None),
+            };
+            let result = astar_model.run(pcb_render_model.clone());
+            let result = match result {
+                Ok(result) => result,
+                Err(e) => {
+                    println!("Cannot find a path for connection {:?}, popping node", connection.connection_id);
+                    backtrack_stack.pop();
+                    continue;
+                }
+            };
+            current_connection_trace_cache.push(result.trace_path.clone());
+            result.trace_path
         };
         let fixed_trace = FixedTrace{
             net_name: connection.net_name.clone(),
             connection_id: connection.connection_id,
-            trace_path: result.trace_path,
+            trace_path,
         };
         let new_node = top_node.push_node(current_connection, fixed_trace);
         backtrack_stack.push(new_node);  
