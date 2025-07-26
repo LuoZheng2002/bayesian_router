@@ -11,12 +11,13 @@ use shared::{
     pcb_render_model::PcbRenderModel,
 };
 
-use crate::proba_model::{ProbaModel, ProbaTrace, Traces};
+use crate::{bayesian_backtrack_algo::TraceCache, proba_model::{ProbaModel, ProbaTrace, Traces}};
 
 #[derive(Debug, Clone)]
 pub struct BacktrackNode {
     pub remaining_trace_candidates: BinaryHeap<BinaryHeapItem<NotNan<f64>, Rc<ProbaTrace>>>, // The remaining trace candidates to be processed, sorted by their scores)>
     pub fixed_traces: HashMap<ConnectionID, FixedTrace>,
+    pub fix_sequence: Vec<ConnectionID>, // The sequence of connections that have been fixed in this node
     pub prob_up_to_date: bool, // Whether the probabilistic model is up to date
 }
 
@@ -47,12 +48,14 @@ impl BacktrackNode {
         BacktrackNode {
             remaining_trace_candidates,
             fixed_traces,
+            fix_sequence: proba_model.fix_sequence.clone(), // Use the fixed sequence from the probabilistic model
             prob_up_to_date: true, // Initially, the probabilistic model is up to date
         }
     }
     fn fix_trace(&mut self, connection_id: ConnectionID, fixed_trace: FixedTrace) {
         // Add the fixed trace to the fixed traces
         self.fixed_traces.insert(connection_id, fixed_trace);
+        self.fix_sequence.push(connection_id);
         // Remove all trace candidates for this connection from the remaining candidates
         let mut remaining_trace_candidates_copy = self.remaining_trace_candidates.clone();
         let mut new_remaining_trace_candidates: BinaryHeap<
@@ -143,23 +146,28 @@ impl BacktrackNode {
     pub fn from_fixed_traces(
         problem: &PcbProblem,
         fixed_traces: &HashMap<ConnectionID, FixedTrace>,
+        fix_sequence: Vec<ConnectionID>,
         pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>,
+        trace_cache: &mut TraceCache,
     ) -> Self {
-        let proba_model = ProbaModel::create_and_solve(problem, fixed_traces, pcb_render_model);
+        let proba_model = ProbaModel::create_and_solve(problem, fixed_traces, fix_sequence, pcb_render_model, trace_cache);
         BacktrackNode::from_proba_model(&proba_model)
     }
     /// if self is already up to date, return none
     pub fn try_update_proba_model(
-        &self,
+        &mut self,
         problem: &PcbProblem,
         pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>,
-    ) -> Option<Self> {
+        trace_cache: &mut TraceCache,
+    ) -> Result<(), String> {
         if self.prob_up_to_date {
-            return None; // If the probabilistic model is already up to date, do nothing
+            return Err("Probabilistic model is already up to date".to_string()); // If the probabilistic model is already up to date, do nothing
         }
         let fixed_traces = &self.fixed_traces;
-        let new_node = BacktrackNode::from_fixed_traces(problem, fixed_traces, pcb_render_model);
-        Some(new_node) // Return the new node with the updated probabilistic model
+        let fix_sequence = self.fix_sequence.clone();
+        let new_node = BacktrackNode::from_fixed_traces(problem, fixed_traces, fix_sequence, pcb_render_model, trace_cache);
+        *self = new_node; // Update self with the new node
+        Ok(())
     }
     pub fn is_solution(&self, problem: &PcbProblem) -> bool {
         // Check if all connections in the problem have fixed traces in this node

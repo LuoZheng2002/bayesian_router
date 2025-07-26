@@ -31,7 +31,7 @@ pub fn working_thread_fn(pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>) {
         }
     };
     pcb_problem.num_layers = 1; // Set to 1 for single layer PCB
-    let result = solve_pcb_problem(&pcb_problem, pcb_render_model.clone(), false);
+    let result = solve_pcb_problem(&pcb_problem, pcb_render_model.clone(), true);
     let result = match result {
         Ok(result) => {
             println!("PCB problem solved successfully");

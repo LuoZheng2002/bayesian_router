@@ -999,6 +999,7 @@ impl AStarModel {
     ) -> Result<AStarResult, String> {
         println!("Running A*");
         SAMPLE_CNT.fetch_add(1, Ordering::SeqCst);
+        println!("Sample count: {}", SAMPLE_CNT.load(Ordering::SeqCst));
         assert!(self.start.is_sum_even());
         assert!(self.end.is_sum_even());
         assert!(!self.start.is_x_odd_y_odd());

@@ -17,7 +17,7 @@ pub fn solve_pcb_problem(
         bayesian_backtrack(pcb_problem, pcb_render_model)
     } else {
         // Call the naive backtrack function
-        naive_backtrack(pcb_problem, pcb_render_model)
+        naive_backtrack(pcb_problem, pcb_render_model, None)
     };
     match result{
         Ok(solution) => {

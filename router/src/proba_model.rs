@@ -21,7 +21,7 @@ use shared::{
 };
 
 use crate::{
-    astar::AStarModel, astar_check_struct::AStarCheck, command_flags::{CommandFlag, COMMAND_CVS, COMMAND_LEVEL, COMMAND_MUTEXES}, quad_tree::{self, QuadTreeNode}
+    astar::AStarModel, astar_check_struct::AStarCheck, bayesian_backtrack_algo::TraceCache, command_flags::{CommandFlag, COMMAND_CVS, COMMAND_LEVEL, COMMAND_MUTEXES}, quad_tree::{self, QuadTreeNode}
 };
 
 #[derive(Copy, Debug, Clone, PartialEq, Hash, Eq, PartialOrd, Ord)]
@@ -65,6 +65,7 @@ pub enum Traces {
 pub struct ProbaModel {
     pub trace_id_generator: Box<dyn Iterator<Item = ProbaTraceID> + Send + 'static>, // A generator for TraceID, starting from 0
     pub connection_to_traces: HashMap<ConnectionID, Traces>, // ConnectionID to list of traces
+    pub fix_sequence: Vec<ConnectionID>, // The sequence of connections that have been fixed
     // pub visited_traces: BTreeSet<TraceAnchors>,
     pub collision_adjacency: HashMap<ProbaTraceID, HashSet<ProbaTraceID>>, // TraceID to set of colliding TraceIDs
     pub next_iteration: NonZeroUsize, // The next iteration to be processed, starting from 1
@@ -74,7 +75,9 @@ impl ProbaModel {
     pub fn create_and_solve(
         problem: &PcbProblem,
         fixed_traces: &HashMap<ConnectionID, FixedTrace>,
+        fix_sequence: Vec<ConnectionID>,
         pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>,
+        trace_cache: &mut TraceCache,
     ) -> Self {
         let mut connection_ids: Vec<ConnectionID> = Vec::new();
         for net_info in problem.nets.values() {
@@ -94,6 +97,7 @@ impl ProbaModel {
         let mut proba_model = ProbaModel {
             trace_id_generator: Box::new((0..).map(ProbaTraceID)),
             connection_to_traces,
+            fix_sequence,
             collision_adjacency: HashMap::new(),
             next_iteration: NonZeroUsize::new(1).expect("Next iteration must be non-zero"),
         };
@@ -126,7 +130,7 @@ impl ProbaModel {
         // to do: specify iteration number
         for j in 0..SAMPLE_ITERATIONS {
             println!("Sampling new traces for iteration {}", j + 1);
-            proba_model.sample_new_traces(problem, pcb_render_model.clone());
+            proba_model.sample_new_traces(problem, pcb_render_model.clone(), trace_cache);
             println!("Done sampling new traces");
             display_when_necessary(&proba_model, CommandFlag::UpdatePosteriorResult);
 
@@ -144,6 +148,7 @@ impl ProbaModel {
         &mut self,
         problem: &PcbProblem,
         pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>,
+        trace_cache: &mut TraceCache,
     ) {
         let mut rng = create_deterministic_rng();
         let mut new_proba_traces: Vec<Rc<ProbaTrace>> = Vec::new();
@@ -162,13 +167,14 @@ impl ProbaModel {
         let mut proba_traces: HashMap<ProbaTraceID, Rc<ProbaTrace>> = HashMap::new();
         // visited TraceAnchors
         let mut visited_traces: BTreeSet<TraceAnchors> = BTreeSet::new();
-        let mut connection_to_visited_traces: HashMap<ConnectionID, Vec<TracePath>> = HashMap::new();
+        // if a new trace is not in the following container, it will be added to the proba traces
+        let mut this_round_visited_traces: HashMap<ConnectionID, Vec<TracePath>> = HashMap::new();
         for (connection_id, traces) in self.connection_to_traces.iter() {
             if let Traces::Probabilistic(trace_map) = traces {
                 for (proba_trace_id, proba_trace) in trace_map.iter() {
                     proba_traces.insert(*proba_trace_id, proba_trace.clone());
                     visited_traces.insert(proba_trace.trace_path.anchors.clone());
-                    connection_to_visited_traces.entry(*connection_id)
+                    this_round_visited_traces.entry(*connection_id)
                         .or_insert_with(Vec::new)
                         .push(proba_trace.trace_path.clone());
                 }
@@ -437,29 +443,7 @@ impl ProbaModel {
                             .get_mut(&layer)
                             .unwrap()
                             .extend(clearance_colliders.iter().cloned());
-                    }
-                    // let trace_segments = &fixed_trace.trace_path.segments;
-                    // for segment in trace_segments.iter() {
-                    //     let layer = segment.layer;
-                    //     let shapes = segment.to_shapes();
-                    //     let clearance_shapes = segment.to_clearance_shapes();
-                    //     let obstacle_shapes = obstacle_shapes.get_mut(&layer).unwrap();
-                    //     let obstacle_clearance_shapes =
-                    //         obstacle_clearance_shapes.get_mut(&layer).unwrap();
-                    //     let obstacle_colliders = obstacle_colliders.get_mut(&layer).unwrap();
-                    //     let obstacle_clearance_colliders =
-                    //         obstacle_clearance_colliders.get_mut(&layer).unwrap();
-                    //     for shape in shapes.iter() {
-                    //         obstacle_shapes.push(shape.clone());
-                    //         let collider = Collider::from_prim_shape(shape);
-                    //         obstacle_colliders.insert(collider);
-                    //     }
-                    //     for clearance_shape in clearance_shapes.iter() {
-                    //         obstacle_clearance_shapes.push(clearance_shape.clone());
-                    //         let clearance_collider = Collider::from_prim_shape(clearance_shape);
-                    //         obstacle_clearance_colliders.insert(clearance_collider);
-                    //     }
-                    // }
+                    }                   
                 }
                 // add all sampled traces to the obstacle shapes
                 for (_, proba_trace_id) in sampled_obstacle_traces.iter() {
@@ -548,12 +532,16 @@ impl ProbaModel {
                         continue; // Skip this connection if it already has enough traces
                     }
                     // first check if any of the traces in connection_to_visited_traces satisfy the constraints
-                    let current_connection_visited_traces = connection_to_visited_traces
+                    // let current_connection_visited_traces = connection_to_visited_traces
+                    //     .entry(*connection_id)
+                    //     .or_insert_with(Vec::new);
+                    let current_connection_visited_traces = this_round_visited_traces
                         .entry(*connection_id)
                         .or_insert_with(Vec::new);
+                    // first check if this round's visited traces contain a trace that satisfies the constraints
                     let mut found_satisfying_trace = false;
-                    for trace_path in current_connection_visited_traces.iter() {                        
-                        let astar_check = AStarCheck{
+                    for (i, trace_path) in current_connection_visited_traces.iter().enumerate() {
+                        let astar_check = AStarCheck {
                             border_colliders: border_colliders.clone(),
                             obstacle_colliders: obstacle_colliders.clone(),
                             obstacle_clearance_colliders: obstacle_clearance_colliders.clone(),
@@ -562,10 +550,12 @@ impl ProbaModel {
                         };
                         if astar_check.check() {
                             found_satisfying_trace = true; // the trace satisfies the constraints
+                            println!("OK: Stored trace path {} satisfies the constraints", i);
                             break; // we found a trace that satisfies the constraints, no need to generate a new one
+                        } else {
+                            println!("Err: Stored trace path {} does not satisfy the constraints", i);
                         }
                     }
-
                     if found_satisfying_trace {
                         println!(
                             "Found a satisfying trace for ConnectionID {:?}, skipping A*",
@@ -573,53 +563,79 @@ impl ProbaModel {
                         );
                         continue; // Skip this connection if a satisfying trace is found
                     }
-
-                    // prepare for the a star model
-                    // let start = net_info.source.position.to_fixed().to_nearest_even_even();
-                    // let end = connection.sink.position.to_fixed().to_nearest_even_even();
-                    let start_pad = net_info.pads.get(&connection.start_pad).unwrap();
-                    let end_pad = net_info.pads.get(&connection.end_pad).unwrap();
-                    let start = start_pad.position.to_fixed().to_nearest_even_even();
-                    let end = end_pad.position.to_fixed().to_nearest_even_even();
-                    let start_layers = start_pad.pad_layer;
-                    let end_layers = end_pad.pad_layer;
-                    let astar_model = AStarModel {
-                        width: problem.width,
-                        height: problem.height,
-                        center: problem.center,
-                        obstacle_shapes: obstacle_shapes.clone(),
-                        obstacle_clearance_shapes: obstacle_clearance_shapes.clone(),
-                        obstacle_colliders: obstacle_colliders.clone(),
-                        obstacle_clearance_colliders: obstacle_clearance_colliders.clone(),
-                        start,
-                        end,
-                        start_layers,
-                        end_layers,
-                        num_layers: problem.num_layers,
-                        trace_width: net_info.trace_width,
-                        trace_clearance: net_info.trace_clearance,
-                        via_diameter: net_info.via_diameter,
-                        border_colliders_cache: RefCell::new(None), // Cache for border points, initialized to None
-                        border_shapes_cache: RefCell::new(None), // Cache for border shapes, initialized to None
-                    };
-                    // run A* algorithm to find a path
-                    let astar_result = astar_model.run(pcb_render_model.clone());
-                    let astar_result = match astar_result {
-                        Ok(result) => result,
-                        Err(err) => {
-                            println!("A* algorithm failed: {}", err);
-                            continue; // Skip this connection if A* fails
+                    
+                    // if not, check if the trace cache contains a trace that satisfies the constraints
+                    // if not, we will generate a new trace
+                    // in both cases, the trace will be added to proba traces
+                    let mut cached_trace: Option<TracePath> = None;
+                    let current_connection_trace_cache = trace_cache.traces.get_mut(connection_id).unwrap();
+                    for trace_path in current_connection_trace_cache.iter() {                        
+                        let astar_check = AStarCheck{
+                            border_colliders: border_colliders.clone(),
+                            obstacle_colliders: obstacle_colliders.clone(),
+                            obstacle_clearance_colliders: obstacle_clearance_colliders.clone(),
+                            solution_trace: trace_path.clone(),
+                            num_layers: problem.num_layers,
+                        };
+                        if astar_check.check() {
+                            println!("Cache Hit!");                            
+                            cached_trace = Some(trace_path.clone());
+                            
+                            break; // we found a trace that satisfies the constraints, no need to generate a new one
+                        }else{
+                            println!("Cache Miss!");
                         }
+                    }
+                    let trace_path = if let Some(generated_trace) = cached_trace {
+                        // we found a trace that satisfies the constraints, use it
+                        generated_trace
+                    } else {
+                        // prepare for the a star model
+                        // let start = net_info.source.position.to_fixed().to_nearest_even_even();
+                        // let end = connection.sink.position.to_fixed().to_nearest_even_even();
+                        let start_pad = net_info.pads.get(&connection.start_pad).unwrap();
+                        let end_pad = net_info.pads.get(&connection.end_pad).unwrap();
+                        let start = start_pad.position.to_fixed().to_nearest_even_even();
+                        let end = end_pad.position.to_fixed().to_nearest_even_even();
+                        let start_layers = start_pad.pad_layer;
+                        let end_layers = end_pad.pad_layer;
+                        let astar_model = AStarModel {
+                            width: problem.width,
+                            height: problem.height,
+                            center: problem.center,
+                            obstacle_shapes: obstacle_shapes.clone(),
+                            obstacle_clearance_shapes: obstacle_clearance_shapes.clone(),
+                            obstacle_colliders: obstacle_colliders.clone(),
+                            obstacle_clearance_colliders: obstacle_clearance_colliders.clone(),
+                            start,
+                            end,
+                            start_layers,
+                            end_layers,
+                            num_layers: problem.num_layers,
+                            trace_width: net_info.trace_width,
+                            trace_clearance: net_info.trace_clearance,
+                            via_diameter: net_info.via_diameter,
+                            border_colliders_cache: RefCell::new(None), // Cache for border points, initialized to None
+                            border_shapes_cache: RefCell::new(None), // Cache for border shapes, initialized to None
+                        };
+                        // run A* algorithm to find a path
+                        let astar_result = astar_model.run(pcb_render_model.clone());
+                        let astar_result = match astar_result {
+                            Ok(result) => result,
+                            Err(err) => {
+                                println!("A* algorithm failed: {}", err);
+                                continue; // Skip this connection if A* fails
+                            }
+                        };
+                        let trace_path = astar_result.trace_path;
+                        trace_path
                     };
-                    let trace_path = astar_result.trace_path;
 
                     assert!(!visited_traces.contains(&trace_path.anchors), "Trace path is supposed to be a new one generated by A*");       
 
                     visited_traces.insert(trace_path.anchors.clone());
-                    connection_to_visited_traces
-                        .entry(*connection_id)
-                        .or_insert_with(Vec::new)
-                        .push(trace_path.clone());
+                    current_connection_visited_traces.push(trace_path.clone());
+                    current_connection_trace_cache.push(trace_path.clone());
 
                     let proba_trace_id = self
                         .trace_id_generator
@@ -842,6 +858,10 @@ impl ProbaModel {
                     .as_str(),
                 );
                 let posterior = adjacent_trace.get_posterior_with_fallback();
+                assert!(posterior >= 0.0 && posterior <= 1.0,
+                    "Posterior must be between 0 and 1, got: {}",
+                    posterior
+                );
                 // to do: update this
                 target_penalty += posterior;
             }
@@ -850,6 +870,10 @@ impl ProbaModel {
             // let opportunity_cost = target_posterior / current_posterior;
 
             let score = proba_trace.trace_path.get_score();
+            assert!(score >= 0.0 && score <= 1.0,
+                "Score must be between 0 and 1, got: {}",
+                score
+            );
             // let score_weight = *SCORE_WEIGHT.lock().unwrap();
             // let opportunity_cost_weight = *OPPORTUNITY_COST_WEIGHT.lock().unwrap();
             let k = f64::ln(2.0) / HALF_PROBABILITY_OPPORTUNITY_COST;
@@ -866,21 +890,28 @@ impl ProbaModel {
                 * opportunity_cost;
             let target_posterior_normalized =
                 proba_trace.get_normalized_prior() * target_posterior_unnormalized;
+
+            
+            // let target_greater_than_current = target_posterior_normalized > current_posterior;
+            // let constant_offset = if target_greater_than_current {
+            //     CONSTANT_LEARNING_RATE
+            // } else {
+            //     -CONSTANT_LEARNING_RATE
+            // };
+            // let new_posterior = current_posterior
+            //     + (target_posterior_normalized - current_posterior) * LINEAR_LEARNING_RATE
+            //     + constant_offset;
+            let new_posterior = target_posterior_normalized;
+            // let new_posterior = if target_greater_than_current {
+            //     new_posterior.max(target_posterior_normalized)
+            // } else {
+            //     new_posterior.min(target_posterior_normalized)
+            // };
+            assert!(new_posterior >= 0.0 && new_posterior <= 1.0,
+                "New posterior must be between 0 and 1, got: {}",
+                new_posterior
+            );
             let mut temp_posterior = proba_trace.temp_posterior.borrow_mut();
-            let target_greater_than_current = target_posterior_normalized > current_posterior;
-            let constant_offset = if target_greater_than_current {
-                CONSTANT_LEARNING_RATE
-            } else {
-                -CONSTANT_LEARNING_RATE
-            };
-            let new_posterior = current_posterior
-                + (target_posterior_normalized - current_posterior) * LINEAR_LEARNING_RATE
-                + constant_offset;
-            let new_posterior = if target_greater_than_current {
-                new_posterior.max(target_posterior_normalized)
-            } else {
-                new_posterior.min(target_posterior_normalized)
-            };
             *temp_posterior = Some(new_posterior);
         }
         // move temp_posterior to posterior

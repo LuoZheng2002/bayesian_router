@@ -95,129 +95,133 @@ fn display_when_necessary(
         thread::sleep(Duration::from_millis(0));
     }
 }
-pub fn naive_backtrack(problem: &PcbProblem, pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>) -> Result<PcbSolution, String> {
-
-
-    // prepare the obstacles for the first A* run
-    
-                
+pub fn naive_backtrack(problem: &PcbProblem, 
+    pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>,
+    heuristics: Option<Vec<ConnectionID>>,
+) -> Result<PcbSolution, String> {
+    // prepare the obstacles for the first A* run    
     let quad_tree_side_length = f32::max(problem.width as f32, problem.height as f32);
-    let quad_tree_x_min = problem.center.x as f32 - quad_tree_side_length / 2.0;
-    let quad_tree_x_max = problem.center.x as f32 + quad_tree_side_length / 2.0;
-    let quad_tree_y_min = problem.center.y as f32 - quad_tree_side_length / 2.0;
-    let quad_tree_y_max = problem.center.y as f32 + quad_tree_side_length / 2.0;
-    let mut connection_to_length: HashMap<ConnectionID, NotNan<f32>> = HashMap::new();
-    for (net_name, net_info) in problem.nets.iter() {
-        // obstacles are pads
-        let mut obstacle_shapes: HashMap<usize, Vec<PrimShape>> = (0..problem.num_layers)
-            .map(|layer| (layer, Vec::new()))
-            .collect();
-        let mut obstacle_clearance_shapes: HashMap<usize, Vec<PrimShape>> = (0..problem
-            .num_layers)
-            .map(|layer| (layer, Vec::new()))
-            .collect();
-        let mut obstacle_colliders: HashMap<usize, QuadTreeNode> = (0..problem.num_layers)
-            .map(|layer| {
-                (
-                    layer,
-                    QuadTreeNode::new(
-                        quad_tree_x_min,
-                        quad_tree_x_max,
-                        quad_tree_y_min,
-                        quad_tree_y_max,
-                        0,
-                    ),
-                )
-            })
-            .collect();
-        let mut obstacle_clearance_colliders: HashMap<usize, QuadTreeNode> = (0..problem
-            .num_layers)
-            .map(|layer| {
-                (
-                    layer,
-                    QuadTreeNode::new(
-                        quad_tree_x_min,
-                        quad_tree_x_max,
-                        quad_tree_y_min,
-                        quad_tree_y_max,
-                        0,
-                    ),
-                )
-            })
-            .collect();
-        for (_, net_info) in problem
-            .nets
-            .iter()
-            .filter(|(other_net_id, _)| **other_net_id != *net_name)
-        {
-            for pad in net_info.pads.values(){
-                let pad_layers = pad.pad_layer.get_iter(problem.num_layers);
-                for layer in pad_layers{
-                    let pad_shapes = pad.to_shapes();
-                    let pad_clearance_shapes = pad.to_clearance_shapes();                    
-                    for pad_shape in pad_shapes.iter() {
-                        let pad_collider = Collider::from_prim_shape(pad_shape);
-                        obstacle_colliders.get_mut(&layer).unwrap().insert(pad_collider);
+        let quad_tree_x_min = problem.center.x as f32 - quad_tree_side_length / 2.0;
+        let quad_tree_x_max = problem.center.x as f32 + quad_tree_side_length / 2.0;
+        let quad_tree_y_min = problem.center.y as f32 - quad_tree_side_length / 2.0;
+        let quad_tree_y_max = problem.center.y as f32 + quad_tree_side_length / 2.0;
+    
+    let ordered_connection_vec = if let Some(heuristics) = heuristics {
+        heuristics
+    } else {        
+        let mut connection_to_length: HashMap<ConnectionID, NotNan<f32>> = HashMap::new();
+        for (net_name, net_info) in problem.nets.iter() {
+            // obstacles are pads
+            let mut obstacle_shapes: HashMap<usize, Vec<PrimShape>> = (0..problem.num_layers)
+                .map(|layer| (layer, Vec::new()))
+                .collect();
+            let mut obstacle_clearance_shapes: HashMap<usize, Vec<PrimShape>> = (0..problem
+                .num_layers)
+                .map(|layer| (layer, Vec::new()))
+                .collect();
+            let mut obstacle_colliders: HashMap<usize, QuadTreeNode> = (0..problem.num_layers)
+                .map(|layer| {
+                    (
+                        layer,
+                        QuadTreeNode::new(
+                            quad_tree_x_min,
+                            quad_tree_x_max,
+                            quad_tree_y_min,
+                            quad_tree_y_max,
+                            0,
+                        ),
+                    )
+                })
+                .collect();
+            let mut obstacle_clearance_colliders: HashMap<usize, QuadTreeNode> = (0..problem
+                .num_layers)
+                .map(|layer| {
+                    (
+                        layer,
+                        QuadTreeNode::new(
+                            quad_tree_x_min,
+                            quad_tree_x_max,
+                            quad_tree_y_min,
+                            quad_tree_y_max,
+                            0,
+                        ),
+                    )
+                })
+                .collect();
+            for (_, net_info) in problem
+                .nets
+                .iter()
+                .filter(|(other_net_id, _)| **other_net_id != *net_name)
+            {
+                for pad in net_info.pads.values(){
+                    let pad_layers = pad.pad_layer.get_iter(problem.num_layers);
+                    for layer in pad_layers{
+                        let pad_shapes = pad.to_shapes();
+                        let pad_clearance_shapes = pad.to_clearance_shapes();                    
+                        for pad_shape in pad_shapes.iter() {
+                            let pad_collider = Collider::from_prim_shape(pad_shape);
+                            obstacle_colliders.get_mut(&layer).unwrap().insert(pad_collider);
+                        }
+                        for pad_clearance_shape in pad_clearance_shapes.iter() {
+                            let pad_clearance_collider = Collider::from_prim_shape(pad_clearance_shape);
+                            obstacle_clearance_colliders.get_mut(&layer).unwrap().insert(pad_clearance_collider);
+                        }
+                        obstacle_shapes.get_mut(&layer).unwrap().extend(pad_shapes);
+                        obstacle_clearance_shapes.get_mut(&layer).unwrap().extend(pad_clearance_shapes);
                     }
-                    for pad_clearance_shape in pad_clearance_shapes.iter() {
-                        let pad_clearance_collider = Collider::from_prim_shape(pad_clearance_shape);
-                        obstacle_clearance_colliders.get_mut(&layer).unwrap().insert(pad_clearance_collider);
-                    }
-                    obstacle_shapes.get_mut(&layer).unwrap().extend(pad_shapes);
-                    obstacle_clearance_shapes.get_mut(&layer).unwrap().extend(pad_clearance_shapes);
                 }
             }
-        }
-        let obstacle_shapes = Rc::new(obstacle_shapes);
-        let obstacle_clearance_shapes = Rc::new(obstacle_clearance_shapes);
-        let obstacle_colliders = Rc::new(obstacle_colliders);
-        let obstacle_clearance_colliders = Rc::new(obstacle_clearance_colliders);
-        
-        for connection in net_info.connections.values() {
-            let start_pad = net_info.pads.get(&connection.start_pad).unwrap();
-            let end_pad = net_info.pads.get(&connection.end_pad).unwrap();
-            let start = start_pad.position.to_fixed().to_nearest_even_even();
-            let end = end_pad.position.to_fixed().to_nearest_even_even();
-            let start_layers = start_pad.pad_layer;
-            let end_layers = end_pad.pad_layer;
-
+            let obstacle_shapes = Rc::new(obstacle_shapes);
+            let obstacle_clearance_shapes = Rc::new(obstacle_clearance_shapes);
+            let obstacle_colliders = Rc::new(obstacle_colliders);
+            let obstacle_clearance_colliders = Rc::new(obstacle_clearance_colliders);
             
-            let astar_model = AStarModel {
-                start,
-                end,
-                start_layers,
-                end_layers,
-                num_layers: problem.num_layers,
-                trace_width: net_info.trace_width,
-                trace_clearance: net_info.trace_clearance,
-                via_diameter: net_info.via_diameter,
-                width: problem.width,
-                height: problem.height,
-                center: problem.center,
-                obstacle_shapes: obstacle_shapes.clone(),
-                obstacle_clearance_shapes: obstacle_clearance_shapes.clone(),
-                obstacle_colliders: obstacle_colliders.clone(),
-                obstacle_clearance_colliders: obstacle_clearance_colliders.clone(),
-                border_colliders_cache: RefCell::new(None),
-                border_shapes_cache: RefCell::new(None),
-            };
-            let result = astar_model.run(pcb_render_model.clone());
-            let result = match result{
-                Ok(result) => result,
-                Err(e) => {
-                    println!("A star algorithm failed");
-                    panic!("A star algorithm failed");
-                }
-            };
-            connection_to_length.insert(connection.connection_id, NotNan::new(result.trace_path.total_length as f32).unwrap());
-        }
-    }
-    let mut connection_heap: BinaryHeap<BinaryHeapItem<Reverse<NotNan<f32>>, ConnectionID>> = BinaryHeap::new();
-    for (connection_id, length) in connection_to_length.iter() {
-        connection_heap.push(BinaryHeapItem::new(Reverse(*length), *connection_id));
-    }
-    let ordered_connection_vec: Vec<ConnectionID> = connection_heap.drain().map(|item| item.value).collect();
+            for connection in net_info.connections.values() {
+                let start_pad = net_info.pads.get(&connection.start_pad).unwrap();
+                let end_pad = net_info.pads.get(&connection.end_pad).unwrap();
+                let start = start_pad.position.to_fixed().to_nearest_even_even();
+                let end = end_pad.position.to_fixed().to_nearest_even_even();
+                let start_layers = start_pad.pad_layer;
+                let end_layers = end_pad.pad_layer;
 
+                
+                let astar_model = AStarModel {
+                    start,
+                    end,
+                    start_layers,
+                    end_layers,
+                    num_layers: problem.num_layers,
+                    trace_width: net_info.trace_width,
+                    trace_clearance: net_info.trace_clearance,
+                    via_diameter: net_info.via_diameter,
+                    width: problem.width,
+                    height: problem.height,
+                    center: problem.center,
+                    obstacle_shapes: obstacle_shapes.clone(),
+                    obstacle_clearance_shapes: obstacle_clearance_shapes.clone(),
+                    obstacle_colliders: obstacle_colliders.clone(),
+                    obstacle_clearance_colliders: obstacle_clearance_colliders.clone(),
+                    border_colliders_cache: RefCell::new(None),
+                    border_shapes_cache: RefCell::new(None),
+                };
+                let result = astar_model.run(pcb_render_model.clone());
+                let result = match result{
+                    Ok(result) => result,
+                    Err(e) => {
+                        println!("A star algorithm failed");
+                        panic!("A star algorithm failed");
+                    }
+                };
+                connection_to_length.insert(connection.connection_id, NotNan::new(result.trace_path.total_length as f32).unwrap());
+            }
+        }
+        let mut connection_heap: BinaryHeap<BinaryHeapItem<Reverse<NotNan<f32>>, ConnectionID>> = BinaryHeap::new();
+        for (connection_id, length) in connection_to_length.iter() {
+            connection_heap.push(BinaryHeapItem::new(Reverse(*length), *connection_id));
+        }
+        let ordered_connection_vec: Vec<ConnectionID> = connection_heap.drain().map(|item| item.value).collect();
+        ordered_connection_vec
+    };
     let mut backtrack_stack: Vec<NaiveBacktrackNode> = Vec::new();
 
     let root_node = NaiveBacktrackNode::new_empty(&ordered_connection_vec);
