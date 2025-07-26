@@ -256,7 +256,7 @@ pub fn naive_backtrack(problem: &PcbProblem,
         let ordered_connection_vec: Vec<ConnectionID> = connection_heap.drain().map(|item| item.value).collect();
         ordered_connection_vec
     };
-    SAMPLE_CNT.store(0, Ordering::Relaxed);
+    // SAMPLE_CNT.store(0, Ordering::Relaxed);
     let mut backtrack_stack: Vec<NaiveBacktrackNode> = Vec::new();
 
     let root_node = NaiveBacktrackNode::new_empty(&ordered_connection_vec);

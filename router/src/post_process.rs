@@ -160,6 +160,9 @@ fn anchor_to_tracepath(
     }
 }
 
+
+
+
 pub fn optimize_path(
     trace_path: &TracePath,
     check_collision: &dyn Fn(FixedVec2, FixedVec2, f32, f32, usize) -> bool,
@@ -176,14 +179,23 @@ pub fn optimize_path(
     }
 
     let path = &trace_path.anchors.0;
+    // 
+
+
     if path.len() < 4 {
         return trace_path.clone();
     }
+
+
+
     let mut optflag = true;
     let mut optcnt = 2;
-    if OPTIMIZATION_PRO{
+
+
+    if OPTIMIZATION_PRO {
         optcnt = 0;
     }
+    
     let mut optimized = path.clone();
     let mut total_length = trace_path.total_length;
 

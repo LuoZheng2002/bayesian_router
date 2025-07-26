@@ -149,7 +149,12 @@ pub fn bayesian_backtrack(
                 determined_traces: fixed_traces,
                 scale_down_factor: pcb_problem.scale_down_factor,
             };
-            return Ok(solution);
+            println!("Successfully found a solution with sample count {}", shared::hyperparameters::SAMPLE_CNT.load(Ordering::SeqCst));
+            SAMPLE_CNT.store(0, Ordering::SeqCst);
+           
+            heuristics = Some(top_node.fix_sequence.clone());
+            break; // break the loop to return the solution
+            // return Ok(solution);
         }
         let display_and_block_closure = |node: &BacktrackNode| {
             display_when_necessary(node, pcb_problem, pcb_render_model.clone());
@@ -186,71 +191,7 @@ pub fn bayesian_backtrack(
             println!("Failed to find a solution in Bayesian backtrack, bringing the heuristics to naive backtrack");
             heuristics = Some(temp_heuristics);
             break;
-        }
-        // match new_node {
-        //     Some(new_node) => {
-        //         // If we successfully fixed a trace, push the new node onto the stack
-        //         println!(
-        //             "Successfully fixed the top ranked trace, pushing new node onto the stack"
-        //         );
-        //         // assert!(new_node.prob_up_to_date, "New node must be up to date");
-        //         new_node.try_update_proba_model(pcb_problem, pcb_render_model.clone(), &mut trace_cache);
-        //         node_stack.push(*new_node);
-        //     }
-        //     None => {
-        //         println!("Failed to find a solution");
-        //         panic!("Failed to find a solution");
-        //         // If we failed to fix the top-ranked trace, we update the node in the middle between the current position and the last updated node
-        //         // let current_node_index = node_stack.len() - 1;
-        //         // let last_updated_index = last_updated_node_index(&node_stack);
-        //         // let target_index = (current_node_index + last_updated_index + 1) / 2; // bias to right for consistency
-        //         // println!(
-        //         //     "Failed to fix the top ranked trace, trying to update the probabilistic model in the middle of the stack: {}", target_index
-        //         // );
-        //         // println!("current node index: {}, last updated index: {}", current_node_index, last_updated_index);
-        //         // // let target_index = current_node_index;
-        //         // let result = node_stack[target_index]
-        //         //     .try_update_proba_model(pcb_problem, pcb_render_model.clone(), &mut trace_cache);
-        //         // match result {
-        //         //     Ok(()) => {
-        //         //         // If we successfully updated the probabilistic model, replace the node at the target index with the new node
-        //         //         assert!(
-        //         //             target_index < node_stack.len(),
-        //         //             "Target index must be within the stack bounds"
-        //         //         );
-        //         //         // if target_index == node_stack.len() - 1 {
-        //         //         //     node_stack.push(new_node);
-        //         //         // } else {
-        //         //         //     node_stack[target_index + 1] = new_node;
-        //         //         //     node_stack.truncate(target_index + 2); // Remove all nodes above the target index
-        //         //         //     println!(
-        //         //         //         "Successfully updated the probabilistic model, replacing node at index {}",
-        //         //         //         target_index
-        //         //         //     );
-        //         //         // }
-        //         //         node_stack.truncate(target_index + 1); // Remove all nodes above the target index
-        //         //         println!(
-        //         //             "Successfully updated the probabilistic model, replacing node at index {}",
-        //         //             target_index
-        //         //         );
-        //         //         print_current_stack(&node_stack);
-        //         //     }
-        //         //     Err(err) => {
-        //         //         // // If we failed to update the probabilistic model, we pop the current node from the stack
-        //         //         // assert!(
-        //         //         //     target_index == node_stack.len() - 1,
-        //         //         //     "target index must be the last node in the stack"
-        //         //         // );
-        //         //         // node_stack.pop();
-        //         //         // println!(
-        //         //         //     "Failed to update the probabilistic model, popping the current node from the stack"
-        //         //         // );
-        //         //         println!("Failed to update the probabilistic model: {}", err);
-        //         //         panic!("failed to find a solution")
-        //         //     }
-        //         // }
-        //     }
-        // }
+        }       
     }
     println!("Number of samples taken by Bayesian backtrack: {}", SAMPLE_CNT.load(Ordering::SeqCst));
     SAMPLE_CNT.store(0, Ordering::SeqCst);
