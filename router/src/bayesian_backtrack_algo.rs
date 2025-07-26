@@ -72,7 +72,7 @@ pub fn bayesian_backtrack(
         for (_, net_info) in problem.nets.iter() {
             net_name_to_color.insert(net_info.net_name.clone(), net_info.color);
             for pad in net_info.pads.values(){
-                let pad_renderables = pad.to_renderables(net_info.color.to_float4(1.0));
+                let pad_renderables = pad.to_renderables(net_info.color.to_float4(0.5));
                 let pad_clearance_renderables = pad.to_clearance_renderables(net_info.color.to_float4(1.0));
                 pad_shape_renderables.extend(pad_renderables);
                 pad_shape_renderables.extend(pad_clearance_renderables);

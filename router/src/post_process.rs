@@ -70,6 +70,9 @@ pub fn draw_tracepath_to_file(
     Ok(())
 }
 
+
+
+
 fn calculate_plot_range(trace_path: &TracePath) -> (Range<f64>, Range<f64>) {
     let mut min_x = f64::MAX;
     let mut max_x = f64::MIN;
@@ -92,16 +95,21 @@ fn calculate_plot_range(trace_path: &TracePath) -> (Range<f64>, Range<f64>) {
     )
 }
 
+
+
 fn is_right_angle(dir1: Direction, dir2: Direction) -> bool {
     let angle = (dir1.to_degree_angle() - dir2.to_degree_angle()).abs();
     angle == 90.0 || angle == 270.0
 }
+
 
 fn is_convex(dir1: Direction, dir2: Direction, dir3: Direction) -> bool {
     let angle1 = (dir1.to_degree_angle() - dir3.to_degree_angle()).abs();
     let angle2 = (dir1.to_degree_angle() + dir3.to_degree_angle()).abs() / 2.0;
     (angle1 == 90.0 || angle1 == 270.0) && angle2 == dir2.to_degree_angle()
 }
+
+
 
 fn anchor_to_tracepath(
     anchors: Vec<TraceAnchor>,

@@ -784,10 +784,11 @@ impl ProbaModel {
         let mut other_shape_renderables: Vec<ShapeRenderable> = Vec::new();
         for (_, net_info) in problem.nets.iter() {
             // add all pads in a net
-            let net_color = net_info.color.to_float4(1.0);
+            let net_color_solid = net_info.color.to_float4(1.0);
+            let net_color_transparent = net_info.color.to_float4(0.5);
             for pad in net_info.pads.values(){
-                let pad_renderables = pad.to_renderables(net_color);
-                let pad_clearance_renderables = pad.to_clearance_renderables(net_color);
+                let pad_renderables = pad.to_renderables(net_color_solid);
+                let pad_clearance_renderables = pad.to_clearance_renderables(net_color_transparent);
                 pad_shape_renderables.extend(pad_renderables);
                 pad_shape_renderables.extend(pad_clearance_renderables);
             }            
