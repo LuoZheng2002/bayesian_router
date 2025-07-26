@@ -2093,6 +2093,7 @@ dependencies = [
  "lazy_static",
  "ordered-float 5.0.0",
  "rand",
+ "rand_chacha",
 ]
 
 [[package]]
