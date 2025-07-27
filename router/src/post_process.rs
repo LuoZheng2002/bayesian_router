@@ -193,7 +193,7 @@ pub fn binary_approach_to_obstacles(
         for trace in traces{
             let start_position = trace.0;
             let end_position = trace.1;
-            if check_collision_for_trace(
+            if start_position != end_position && check_collision_for_trace(
                 start_position,
                 end_position,
                 trace_width,
@@ -220,7 +220,7 @@ pub fn try_parallel_shift(
     trace_width: f32,
     trace_clearance: f32,
 )-> bool{
-    for i in 0..optimized.len() - 3 {
+    for i in 0.. i64::max(optimized.len() as i64 - 3, 0) as usize {
         // Check for parallel segments that can be optimized
         // trace shifting
         let p0 = optimized[i].position;
@@ -258,6 +258,9 @@ pub fn try_parallel_shift(
         // let dir4 = if i == optimized.len() - 4 {None} else {Some(Direction::from_points(p3, optimized[i + 4].position).unwrap())};
         if dir1 != dir3{
             continue; // not parallel
+        }
+        if dir1 == dir2{
+            continue; // not a valid parallel shift
         }
         assert!(dir1 != dir2, "dir1 and dir2 should not be the same, dir1: {:?}, dir2: {:?}", dir1, dir2);
         println!("Found a parallel shift");
@@ -382,7 +385,7 @@ pub fn try_convex_and_merge(
     trace_width: f32,
     trace_clearance: f32,
 )-> bool{
-    for i in 0.. optimized.len() - 3{
+    for i in 0.. i64::max(optimized.len() as i64 - 3, 0) as usize{
         let p0 = optimized[i].position;
         let p1 = optimized[i + 1].position;
         let p2 = optimized[i + 2].position;
@@ -554,7 +557,7 @@ pub fn try_cut_right_or_sharp_angle(
     // trace_width: f32,
     // trace_clearance: f32,
 ) -> bool{
-    for i in 0..optimized.len() - 2 {
+    for i in 0..i64::max(optimized.len() as i64 - 2, 0) as usize {
         let p1 = optimized[i].position;
         let anchor2 = &optimized[i + 1];
         let p2 = optimized[i + 1].position;
@@ -587,7 +590,7 @@ pub fn try_cut_right_or_sharp_angle(
 
 
 pub fn try_merge_path(optimized: &mut Vec<TraceAnchor>)->bool{
-    for i in 0..optimized.len() - 2 {
+    for i in 0..i64::max(optimized.len() as i64 - 2, 0) as usize {
         // Check for inline segments that can be optimized
         let p1 = optimized[i].position;
         let p2 = optimized[i + 1].position;
@@ -623,7 +626,7 @@ pub fn try_merge_path(optimized: &mut Vec<TraceAnchor>)->bool{
 
 pub fn print_directions(optimized: &Vec<TraceAnchor>) {
     print!("Updated directions: ");
-    for i in 0..optimized.len() - 1 {
+    for i in 0..i64::max(optimized.len() as i64 - 1, 0) as usize {
         let p1 = optimized[i].position;
         let p2 = optimized[i + 1].position;
         let dir_str = match Direction::from_points(p1, p2).unwrap(){

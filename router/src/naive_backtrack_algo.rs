@@ -240,7 +240,7 @@ pub fn naive_backtrack(problem: &PcbProblem,
                         Ok(result) => result,
                         Err(e) => {
                             println!("A star algorithm failed");
-                            panic!("A star algorithm failed");
+                            return Err("A* algorithm failed in initial heuristic calculation".to_string());
                         }
                     };
                     current_connection_trace_cache.push(result.trace_path.clone());

@@ -591,8 +591,6 @@ impl ProbaModel {
                         generated_trace
                     } else {
                         // prepare for the a star model
-                        // let start = net_info.source.position.to_fixed().to_nearest_even_even();
-                        // let end = connection.sink.position.to_fixed().to_nearest_even_even();
                         let start_pad = net_info.pads.get(&connection.start_pad).unwrap();
                         let end_pad = net_info.pads.get(&connection.end_pad).unwrap();
                         let start = start_pad.position.to_fixed().to_nearest_even_even();

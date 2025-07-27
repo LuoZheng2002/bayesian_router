@@ -1,6 +1,6 @@
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
-pub type FixedPoint = fixed::types::I24F8;
+pub type FixedPoint = fixed::types::I16F16;
 
 #[derive(Debug, Clone, PartialEq, Hash, Eq, Copy, PartialOrd, Ord)]
 pub struct FixedVec2 {

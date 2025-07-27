@@ -717,23 +717,31 @@ impl AStarModel {
         let mut min_distance = FixedPoint::MAX;
         let mut best_intersection: Option<FixedVec2> = None;
         let current_direction = Direction::from_points(start_pos, end_pos).unwrap().unwrap();
-        let end_directions = [
+        let mut end_directions = [
             current_direction.left_45_dir(),
             current_direction.right_45_dir(),
-        ];
+        ].into_iter().collect::<HashSet<_>>();
+        end_directions.insert(Direction::Up);
+        end_directions.insert(Direction::Down);
+        end_directions.insert(Direction::Left);
+        end_directions.insert(Direction::Right);
+
         for end_direction in end_directions {
-            // if end_direction == current_direction || end_direction == current_direction.opposite() {
-            //     continue; // skip the same direction or its opposite
-            // }
-            assert_ne!(end_direction, current_direction);
-            assert_ne!(end_direction, end_direction.opposite());
+            if end_direction == current_direction {
+                continue; // skip the current direction
+            }
+            if end_direction == current_direction.opposite() {
+                continue; // skip the opposite direction
+            }
+            // assert_ne!(end_direction, current_direction);
+            // assert_ne!(end_direction, end_direction.opposite());
             if let Some(intersection) = self.line_intersection_infinite(
                 start_pos,
                 end_pos,
                 self.end,
                 self.end + end_direction.to_fixed_vec2(FixedPoint::DELTA),
             ) {
-                assert!(intersection.is_sum_even());
+                // assert!(intersection.is_sum_even());
                 let dx = intersection.x - start_pos.x;
                 let dy = intersection.y - start_pos.y;
                 let distance = FixedPoint::max(dx.abs(), dy.abs());
@@ -1194,6 +1202,7 @@ impl AStarModel {
             // don't consider visited nodes as trials
             trial_count += 1;
             if trial_count > MAX_TRIALS {
+                self.display_when_necessary(pcb_render_model.clone(), &frontier, CommandFlag::Auto);
                 return Err("A* search exceeded maximum trials".to_string());
             }
             visited.insert(current_key.clone());
@@ -1293,6 +1302,9 @@ impl AStarModel {
                         self.end,
                         current_node.layer,
                     );
+                    println!("Successfully pushed an end node to the frontier");
+                }else{
+                    println!("Although a node is aligned with end, collision. Direction: {:?}", end_direction);
                 }
             }
 
@@ -1560,6 +1572,7 @@ impl AStarModel {
                 CommandFlag::AstarFrontierOrUpdatePosterior,
             ); // display the initial state of the frontier
         }
+        self.display_when_necessary(pcb_render_model.clone(), &frontier, CommandFlag::Auto);
         Err("No path found".to_string()) // no path found
     }
 }

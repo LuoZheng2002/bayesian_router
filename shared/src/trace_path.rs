@@ -343,7 +343,7 @@ impl TraceSegment {
                 x: (start.x + end.x) / 2.0,
                 y: (start.y + end.y) / 2.0,
             },
-            width: segment_length + self.clearance * 2.0,
+            width: segment_length,
             height: new_width,
             rotation: cgmath::Deg(self.get_direction().to_degree_angle()),
         });
