@@ -5,7 +5,7 @@ use crate::{
     hyperparameters::{HALF_PROBABILITY_RAW_SCORE, LAYER_TO_TRACE_COLOR},
     pcb_render_model::{RenderableBatch, ShapeRenderable},
     prim_shape::{CircleShape, PrimShape, RectangleShape},
-    vec2::{FixedPoint, FixedVec2, FloatVec2},
+    vec2::{FixedPoint, FixedVec2, FloatVec2, IntVec2},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Hash, Eq, PartialOrd, Ord)]
@@ -74,6 +74,52 @@ impl Direction {
             Direction::TopLeft => 7,
         }
     }
+    pub fn is_right_angle(&self, other: Direction) -> bool {
+        let self_index = self.direction_to_int();
+        let other_index = other.direction_to_int();
+        match (self_index - other_index + 8) % 8 {
+            2 | 6 => true, // 2: right angle, 6: left angle
+            _ => false,
+        }
+    }
+    pub fn is_sharp_angle(&self, other: Direction) -> bool {
+        let self_index = self.direction_to_int();
+        let other_index = other.direction_to_int();
+        match (self_index - other_index + 8) % 8 {
+            3 | 5 => true, // 1: right 45, 3: right 135, 5: left 135, 7: left 45
+            _ => false,
+        }
+    }
+    pub fn between_sharp_angle(dir1: Direction, dir2: Direction) -> Direction {
+        assert!(dir1.is_sharp_angle(dir2));
+        let dir1_int = dir1.direction_to_int();
+        let dir2_int = dir2.direction_to_int();
+        let difference = (dir1_int - dir2_int + 8) % 8;
+        match difference {
+            3 => {
+                Direction::int_to_direction((dir2_int + 1) % 8)
+            },
+            5 => {
+                Direction::int_to_direction((dir2_int + 7) % 8)
+            },
+            _ => panic!("Not a sharp angle between directions: {:?} and {:?}", dir1, dir2),
+        }
+    }
+    pub fn between_right_angle(dir1: Direction, dir2: Direction) -> Direction {
+        assert!(dir1.is_right_angle(dir2));
+        let dir1_int = dir1.direction_to_int();
+        let dir2_int = dir2.direction_to_int();
+        let difference = (dir1_int - dir2_int + 8) % 8;
+        match difference {
+            2 => {
+                Direction::int_to_direction((dir2_int + 1) % 8)
+            },
+            6 => {
+                Direction::int_to_direction((dir2_int + 7) % 8)
+            },
+            _ => panic!("Not a right angle between directions: {:?} and {:?}", dir1, dir2),
+        }
+    }
     pub fn left_45_90_135(&self, other: Direction) -> bool {
         let self_index = self.direction_to_int();
         let other_index = other.direction_to_int();
@@ -90,15 +136,6 @@ impl Direction {
             _ => false,
         }
     }
-    pub fn right(&self) -> Direction{
-        let right_int = (self.direction_to_int() + 2) % 8; // 2 is equivalent to +2 in mod 8
-        Direction::int_to_direction(right_int)
-    }
-    pub fn left(&self) -> Direction{
-        let left_int = (self.direction_to_int() + 6) % 8; // 6 is equivalent to -2 in mod 8
-        Direction::int_to_direction(left_int)
-    }
-
     fn int_to_direction(i: i32) -> Direction {
         match i {
             0 => Direction::Up,
@@ -152,23 +189,23 @@ impl Direction {
     //         Direction::BottomLeft => FloatVec2 { x: -1.0, y: -1.0 },
     //     }.to_fixed()
     // }
-    pub fn to_int_vec2(&self) -> (i32, i32) {
+    pub fn to_int_vec2(&self) -> IntVec2 {
         match self {
-            Direction::Up => (0, 1),
-            Direction::Down => (0, -1),
-            Direction::Left => (-1, 0),
-            Direction::Right => (1, 0),
-            Direction::TopRight => (1, 1),
-            Direction::TopLeft => (-1, 1),
-            Direction::BottomRight => (1, -1),
-            Direction::BottomLeft => (-1, -1),
+            Direction::Up => IntVec2::new(0, 1),
+            Direction::Down => IntVec2::new(0, -1),
+            Direction::Left => IntVec2::new(-1, 0),
+            Direction::Right => IntVec2::new(1, 0),
+            Direction::TopRight => IntVec2::new(1, 1),
+            Direction::TopLeft => IntVec2::new(-1, 1),
+            Direction::BottomRight => IntVec2::new(1, -1),
+            Direction::BottomLeft => IntVec2::new(-1, -1),
         }
     }
     pub fn to_fixed_vec2(&self, scale: FixedPoint) -> FixedVec2 {
-        let (dx, dy) = self.to_int_vec2();
+        let int_vec = self.to_int_vec2();
         FixedVec2 {
-            x: FixedPoint::from_num(dx) * scale,
-            y: FixedPoint::from_num(dy) * scale,
+            x: FixedPoint::from_num(int_vec.x) * scale,
+            y: FixedPoint::from_num(int_vec.y) * scale,
         }
     }
 
@@ -446,6 +483,56 @@ pub struct TracePath {
 // shrink?
 
 impl TracePath {
+    pub fn from_anchors(
+        anchors: TraceAnchors,
+        trace_width: f32,
+        trace_clearance: f32,
+        via_diameter: f32,
+    ) -> Self{
+        let anchors_vec = &anchors.0;
+        let mut segments = Vec::new();
+        let mut vias = Vec::new();
+        let mut total_length = 0.0;
+        for i in 0..anchors_vec.len() - 1 {
+            let start = anchors_vec[i].position;
+            let end = anchors_vec[i + 1].position;
+            let segment = TraceSegment {
+                start,
+                end,
+                width: trace_width,
+                clearance: trace_clearance,
+                layer: anchors_vec[i].end_layer,
+            };
+            let start_x: f64 = start.x.to_num();
+            let start_y: f64 = start.y.to_num();
+            let end_x: f64 = end.x.to_num();
+            let end_y: f64 = end.y.to_num();
+            let segment_length = ((end_x - start_x).powi(2) + (end_y - start_y).powi(2)).sqrt();
+            total_length += segment_length;
+            segments.push(segment);
+        }
+        for i in 1..anchors_vec.len() - 1{
+            let anchor = &anchors_vec[i];            
+            if anchor.start_layer != anchor.end_layer {
+                let min_layer = usize::min(anchor.start_layer, anchor.end_layer);
+                let max_layer = usize::max(anchor.start_layer, anchor.end_layer);
+                let via = Via {
+                    position: anchor.position,
+                    diameter: via_diameter,
+                    clearance: trace_clearance,
+                    min_layer,
+                    max_layer,
+                };
+                vias.push(via);
+            }
+        }
+        Self {
+            anchors,
+            segments,
+            vias,
+            total_length,
+        }
+    }
     pub fn to_shapes(&self, num_layers: usize) -> HashMap<usize, Vec<PrimShape>> {
         let mut shapes: HashMap<usize, Vec<PrimShape>> =
             (0..num_layers).map(|layer| (layer, Vec::new())).collect();

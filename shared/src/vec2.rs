@@ -1,4 +1,4 @@
-use std::ops::{Add, Div, Neg, Sub};
+use std::ops::{Add, Div, Mul, Neg, Sub};
 
 pub type FixedPoint = fixed::types::I24F8;
 
@@ -47,6 +47,31 @@ impl FixedVec2 {
             }
         } else {
             *self
+        }
+    }
+}
+
+impl Mul<FixedPoint> for FixedVec2 {
+    type Output = FixedVec2;
+
+    fn mul(self, scalar: FixedPoint) -> FixedVec2 {
+        FixedVec2 {
+            x: self.x * scalar,
+            y: self.y * scalar,
+        }
+    }
+}
+
+impl Div<FixedPoint> for FixedVec2 {
+    type Output = FixedVec2;
+
+    fn div(self, scalar: FixedPoint) -> FixedVec2 {
+        if scalar == FixedPoint::ZERO {
+            panic!("Division by zero in FixedVec2");
+        }
+        FixedVec2 {
+            x: self.x / scalar,
+            y: self.y / scalar,
         }
     }
 }
@@ -162,6 +187,23 @@ impl Div<f32> for FloatVec2 {
         FloatVec2 {
             x: self.x / scalar,
             y: self.y / scalar,
+        }
+    }
+}
+#[derive(Debug, Clone, Copy, Default)]
+pub struct IntVec2{
+    pub x: i32,
+    pub y: i32,
+}
+
+impl IntVec2 {
+    pub fn new(x: i32, y: i32) -> Self {
+        IntVec2 { x, y }
+    }    
+    pub fn to_fixed(&self) -> FixedVec2 {
+        FixedVec2 {
+            x: FixedPoint::from_num(self.x),
+            y: FixedPoint::from_num(self.y),
         }
     }
 }

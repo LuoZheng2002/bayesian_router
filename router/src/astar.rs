@@ -26,7 +26,7 @@ use shared::{
     },
     prim_shape::{CircleShape, PrimShape, RectangleShape},
     trace_path::{
-        AStarNodeDirection, Direction, TraceAnchor, TraceAnchors, TracePath, TraceSegment, Via,
+        self, AStarNodeDirection, Direction, TraceAnchor, TraceAnchors, TracePath, TraceSegment, Via
     },
     vec2::{FixedPoint, FixedVec2, FloatVec2},
 };
@@ -997,6 +997,101 @@ impl AStarModel {
             }
         }
     }
+    fn final_trace_to_render_model(
+        &self,
+        trace: &TracePath,
+    ) -> PcbRenderModel {
+        let mut render_model = PcbRenderModel {
+            width: self.width,
+            height: self.height,
+            center: self.center,
+            trace_shape_renderables: Vec::new(),
+            pad_shape_renderables: Vec::new(),
+            other_shape_renderables: Vec::new(),
+        };
+        let obstacle_renderables = self
+            .obstacle_shapes
+            .iter()
+            .flat_map(|(_, shapes)| shapes.iter())
+            .map(|shape| {
+                ShapeRenderable {
+                    shape: shape.clone(),
+                    color: [0.7, 0.7, 0.7, 1.0], // gray obstacles
+                }
+            })
+            .collect::<Vec<_>>();
+        render_model
+            .trace_shape_renderables
+            .push(RenderableBatch(obstacle_renderables));
+        let obstacle_clearance_renderables = self
+            .obstacle_clearance_shapes
+            .iter()
+            .flat_map(|(_, shapes)| shapes.iter())
+            .map(|shape| {
+                ShapeRenderable {
+                    shape: shape.clone(),
+                    color: [0.7, 0.7, 0.7, 0.5], // gray obstacle clearance
+                }
+            })
+            .collect::<Vec<_>>();
+        render_model
+            .trace_shape_renderables
+            .push(RenderableBatch(obstacle_clearance_renderables));
+        // render border
+        let border_renderables = self
+            .get_border_shapes()
+            .iter()
+            .map(|shape| {
+                ShapeRenderable {
+                    shape: shape.clone(),
+                    color: [1.0, 0.0, 1.0, 0.5], // magenta border
+                }
+            })
+            .collect::<Vec<_>>();
+        render_model
+            .other_shape_renderables
+            .extend(border_renderables);
+
+        let quad_tree_renderables = self
+            .obstacle_colliders
+            .iter()
+            .flat_map(|(_, colliders)| colliders.to_outline_shapes());
+        render_model
+            .other_shape_renderables
+            .extend(quad_tree_renderables.map(|shape| ShapeRenderable {
+                shape,
+                color: [0.0, 0.0, 1.0, 0.5], // blue quad tree colliders
+            }));
+        // render the trace path
+        let trace_renderables = trace.to_renderables([1.0, 0.5, 0.0, 1.0]);
+        render_model.trace_shape_renderables.extend(trace_renderables);
+
+        render_model
+    }
+
+    fn display_final_trace(&self,
+        pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>,
+        trace: &TracePath,
+        command_flag: CommandFlag
+    ){
+        let current_command_level = COMMAND_LEVEL.load(Ordering::Relaxed);
+        let target_command_level = command_flag.get_level();
+        if current_command_level <= target_command_level {
+            {
+                let mut pcb_render_model = pcb_render_model.lock().unwrap();
+                if pcb_render_model.is_some() {
+                    return; // already rendered, no need to update
+                }
+                let render_model = self.final_trace_to_render_model(trace);
+                *pcb_render_model = Some(render_model);
+            }
+            // block the thread until the user clicks a button
+            {
+                let mutex_guard = COMMAND_MUTEXES[0].lock().unwrap();
+                let _unused = COMMAND_CVS[0].wait(mutex_guard).unwrap();
+            }
+        }
+    }
 
     pub fn run(
         &self,
@@ -1059,23 +1154,32 @@ impl AStarModel {
                     |start: FixedVec2, end: FixedVec2, width: f32, clearance: f32, layer: usize| {
                         self.check_collision_for_trace(start, end, width, clearance, layer)
                     };
-                let check_collision_for_via =
-                    |position: FixedVec2, diameter: f32, clearance: f32, min_layer: usize, max_layer: usize| {
-                        for layer in min_layer..=max_layer {
-                            if self.check_collision_for_via(position, diameter, clearance, layer) {
-                                return true; // collision found
-                            }
-                        }
-                        false
-                    };
+                // let check_collision_for_via =
+                //     |position: FixedVec2, diameter: f32, clearance: f32, min_layer: usize, max_layer: usize| {
+                //         for layer in min_layer..=max_layer {
+                //             if self.check_collision_for_via(position, diameter, clearance, layer) {
+                //                 return true; // collision found
+                //             }
+                //         }
+                //         false
+                //     };
+                
+                print!("Trace path directions:");
+                for segment in trace_path.segments.iter() {
+                    print!(" {:?}", segment.get_direction());                     
+                }
+                println!();
+                self.display_final_trace(pcb_render_model.clone(), &trace_path, CommandFlag::AstarInOut);         
                 let trace_path = optimize_path(
                     &trace_path,
                     &check_collision_for_trace,
-                    &check_collision_for_via,
+                    //  &check_collision_for_via,
                     self.trace_width,
                     self.trace_clearance,
                     self.via_diameter,
-                );
+                );    
+                println!("Finished one iteration of optimization");
+                self.display_final_trace(pcb_render_model.clone(), &trace_path, CommandFlag::AstarInOut);                
                 return Ok(AStarResult { trace_path });
             }
 
