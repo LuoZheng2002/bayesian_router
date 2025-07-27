@@ -1,4 +1,4 @@
-use std::ops::{Add, Div, Sub};
+use std::ops::{Add, Div, Neg, Sub};
 
 pub type FixedPoint = fixed::types::I24F8;
 
@@ -68,6 +68,17 @@ impl Add for FixedVec2 {
         FixedVec2 {
             x: self.x + other.x,
             y: self.y + other.y,
+        }
+    }
+}
+
+impl Neg for FixedVec2 {
+    type Output = FixedVec2;
+
+    fn neg(self) -> FixedVec2 {
+        FixedVec2 {
+            x: -self.x,
+            y: -self.y,
         }
     }
 }

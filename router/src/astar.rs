@@ -588,7 +588,12 @@ impl AStarModel {
             "调用该函数前应确保已经处理与end重合的情况"
         );
         match Direction::from_points(position, self.end) {
-            Ok(direction) => Some(direction),
+            Ok(direction) => match direction{
+                Some(dir) => {
+                    Some(dir)
+                }
+                None => None, // not aligned
+            }
             Err(_) => None,
         }
     }
@@ -711,7 +716,7 @@ impl AStarModel {
 
         let mut min_distance = FixedPoint::MAX;
         let mut best_intersection: Option<FixedVec2> = None;
-        let current_direction = Direction::from_points(start_pos, end_pos).unwrap();
+        let current_direction = Direction::from_points(start_pos, end_pos).unwrap().unwrap();
         let end_directions = [
             current_direction.left_45_dir(),
             current_direction.right_45_dir(),
@@ -749,7 +754,7 @@ impl AStarModel {
         layer: usize,
     ) -> Option<FixedVec2> {
         // println!("binary_approach_to_obstacles");
-        let direction = Direction::from_points(start_position, end_position).unwrap();
+        let direction = Direction::from_points(start_position, end_position).unwrap().unwrap();
         let mut lower_bound = FixedPoint::from_num(0.0);
         let mut upper_bound = FixedPoint::max(
             (start_position.x - end_position.x).abs(),
@@ -759,10 +764,10 @@ impl AStarModel {
             let mid_length = (lower_bound + upper_bound) / 2;
             let temp_end = start_position + direction.to_fixed_vec2(mid_length);
             assert_ne!(start_position, temp_end, "assert 2");
-            let end_circle_clearance_shape = PrimShape::Circle(CircleShape {
-                position: temp_end.to_float(),
-                diameter: self.trace_width + self.trace_clearance * 2.0,
-            });
+            // let end_circle_clearance_shape = PrimShape::Circle(CircleShape {
+            //     position: temp_end.to_float(),
+            //     diameter: self.trace_width + self.trace_clearance * 2.0,
+            // });
             if self.check_collision_for_trace(
                 start_position,
                 temp_end,
@@ -1175,7 +1180,7 @@ impl AStarModel {
                     //     current_node.position.x, current_node.position.y, self.end.x, self.end.y
                     // );
                     assert!(
-                        Direction::from_points(current_node.position, self.end).unwrap()
+                        Direction::from_points(current_node.position, self.end).unwrap().unwrap()
                             == end_direction
                     );
                     condition_count = condition_count + 1;
@@ -1237,7 +1242,7 @@ impl AStarModel {
             );
             for (direction, end_position) in directions {
                 assert!(
-                    Direction::from_points(current_node.position, end_position).unwrap()
+                    Direction::from_points(current_node.position, end_position).unwrap().unwrap()
                         == direction
                 );
                 current_node_handled = true;
@@ -1253,7 +1258,7 @@ impl AStarModel {
                 };
                 condition_count = condition_count + 1;
                 assert!(
-                    Direction::from_points(current_node.position, end_position).unwrap()
+                    Direction::from_points(current_node.position, end_position).unwrap().unwrap()
                         == direction
                 );
                 try_push_node_to_frontier(
@@ -1269,7 +1274,7 @@ impl AStarModel {
                     ) {
                         condition_count = condition_count + 1;
                         assert!(
-                            Direction::from_points(current_node.position, end_position).unwrap()
+                            Direction::from_points(current_node.position, end_position).unwrap().unwrap()
                                 == direction
                         );
                         try_push_node_to_frontier(
@@ -1308,7 +1313,7 @@ impl AStarModel {
                 };
                 condition_count = condition_count + 1;
                 assert!(
-                    Direction::from_points(current_node.position, end_position).unwrap()
+                    Direction::from_points(current_node.position, end_position).unwrap().unwrap()
                         == direction
                 );
                 try_push_node_to_frontier(
@@ -1324,7 +1329,7 @@ impl AStarModel {
                     ) {
                         condition_count = condition_count + 1;
                         assert!(
-                            Direction::from_points(current_node.position, end_position).unwrap()
+                            Direction::from_points(current_node.position, end_position).unwrap().unwrap()
                                 == direction
                         );
                         try_push_node_to_frontier(
@@ -1354,7 +1359,7 @@ impl AStarModel {
                         // println!("4: {}, {}", end_position.x, end_position.y);
                         condition_count = condition_count + 1;
                         assert!(
-                            Direction::from_points(current_node.position, end_position).unwrap()
+                            Direction::from_points(current_node.position, end_position).unwrap().unwrap()
                                 == direction
                         );
                         try_push_node_to_frontier(
@@ -1389,7 +1394,7 @@ impl AStarModel {
                         // println!("4.1: {}, {}", temp_end.unwrap().x, temp_end.unwrap().y);
                         condition_count = condition_count + 1;
                         assert!(
-                            Direction::from_points(current_node.position, end_position).unwrap()
+                            Direction::from_points(current_node.position, end_position).unwrap().unwrap()
                                 == direction
                         );
                         try_push_node_to_frontier(
@@ -1417,7 +1422,7 @@ impl AStarModel {
                                 condition_count = condition_count + 1;
                                 assert!(
                                     Direction::from_points(current_node.position, end_position)
-                                        .unwrap()
+                                        .unwrap().unwrap()
                                         == direction
                                 );
                                 try_push_node_to_frontier(
@@ -1493,7 +1498,12 @@ impl AstarNode {
                 let calculated_direction =
                     Direction::from_points(prev_position, current_node.position);
                 let calculated_direction = match calculated_direction {
-                    Ok(dir) => dir,
+                    Ok(dir) => match dir{
+                        Some(dir) => dir,
+                        None => {
+                            return false; // if the direction cannot be calculated, return false
+                        }
+                    }
                     Err(_) => return false, // if the direction cannot be calculated, return false
                 };
                 if calculated_direction != direction {

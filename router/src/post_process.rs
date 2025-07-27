@@ -10,6 +10,7 @@ use shared::{
 };
 
 use plotters::prelude::*;
+use wgpu::rwh::XcbWindowHandle;
 use std::ops::Range;
 use std::path::Path;
 
@@ -160,10 +161,220 @@ fn anchor_to_tracepath(
     }
 }
 
+
+// merge path
+
+// parallel shift
+
+// loop:
+// convex and merge
+// end loop
+
+// loop:
+// cut sharp corners to right angle and blunt angle
+// convex and merge
+// end loop
+
+// cut right angle to blunt angles
+// convex and merge
+
+pub fn binary_approach_to_obstacles(
+    length_to_trace: &dyn Fn(FixedPoint) ->(FixedVec2, FixedVec2),
+    start_length: FixedPoint,
+    end_length: FixedPoint,
+    check_collision_for_trace: &dyn Fn(FixedVec2, FixedVec2, f32, f32, usize) -> bool,
+    trace_width: f32,
+    trace_clearance: f32,
+    layer: usize,
+)->FixedPoint{
+    assert!(start_length < end_length, "start_length should be less than end_length");
+    let mut lower_bound = start_length;
+    let mut upper_bound = end_length;
+    while lower_bound + FixedPoint::DELTA < upper_bound {
+        let mid_length = (lower_bound + upper_bound) / 2;
+        let (start_position, end_position) = length_to_trace(mid_length);
+        assert_ne!(start_position, end_position, "assert 2");
+        if check_collision_for_trace(
+            start_position,
+            end_position,
+            trace_width,
+            trace_clearance,
+            layer,
+        ) {
+            upper_bound = mid_length; // collision found, search in the lower half
+        } else {
+            lower_bound = mid_length; // no collision, search in the upper half
+        }
+    }
+    let result_length = lower_bound;
+    result_length
+}
+
+pub fn parallel_shift(
+    optimized: &mut Vec<TraceAnchor>,
+    check_collision_for_trace: &dyn Fn(FixedVec2, FixedVec2, f32, f32, usize) -> bool,
+    trace_width: f32,
+    trace_clearance: f32,
+)-> bool{
+    for i in 0..optimized.len() - 3 {
+        // Check for parallel segments that can be optimized
+        // trace shifting
+        let p0 = optimized[i].position;
+        let p1 = optimized[i + 1].position;
+        let p2 = optimized[i + 2].position;
+        let p3 = optimized[i + 3].position;
+        assert!(optimized[i].end_layer == optimized[i + 1].start_layer);
+        assert!(optimized[i + 1].end_layer == optimized[i + 2].start_layer);
+        assert!(optimized[i + 2].end_layer == optimized[i + 3].start_layer);
+        if optimized[i + 1].start_layer != optimized[i + 1].end_layer
+            || optimized[i + 2].start_layer != optimized[i + 2].end_layer{
+            continue;
+        }
+        let my_layer = optimized[i].end_layer;
+        // let dir0: Option<Direction> =  if i == 0 {
+        //     None
+        // } else {
+        //     Direction::from_points(optimized[i - 1].position, p0).unwrap()
+        // };
+        let dir1 = Direction::from_points(p0, p1).unwrap();
+        let dir2 = Direction::from_points(p1, p2).unwrap();
+        let dir3 = Direction::from_points(p2, p3).unwrap();
+        // let dir4 = if i == optimized.len() - 4 {None} else {Some(Direction::from_points(p3, optimized[i + 4].position).unwrap())};
+        if dir1 != dir3{
+            continue; // not parallel
+        }
+        let new_point1 = FixedVec2 {
+            x: p0.x + p2.x - p1.x,
+            y: p0.y + p2.y - p1.y,
+        };
+        let new_point2 = FixedVec2 {
+            x: p3.x - p2.x + p1.x,
+            y: p3.y - p2.y + p1.y,
+        };
+
+        let mut length_0_1 = FixedPoint::max((p1 - p0).x.abs(), (p1 - p0).y.abs());
+        let mut length_2_3 = FixedPoint::max((p3 - p2).x.abs(), (p3 - p2).y.abs());
+
+        let delta_0_1 = -Direction::to_fixed_vec2(dir1, length_0_1);
+        let delta_2_3 = Direction::to_fixed_vec2(dir3, length_2_3); // dir1 = dir3
+        let new_point_left1 = p1 + delta_0_1;
+        let new_point_left2 = p2 + delta_0_1;
+        let new_point_right1 = p1 + delta_2_3;
+        let new_point_right2 = p2 + delta_2_3;
+        assert_eq!(new_point_left1, p0);
+        assert_eq!(new_point_left2, new_point1);
+        assert_eq!(new_point_right1, new_point2);
+        assert_eq!(new_point_right2, p3);
+
+        if !check_collision_for_trace(
+            new_point_left1,
+            new_point_left2,
+            trace_width,
+            trace_clearance,
+            my_layer,
+        ){
+            // If no collision is detected, we can safely update the positions
+            optimized[i + 1].position = new_point_left1;
+            optimized[i + 2].position = new_point_left2;
+            optimized.remove(i);
+            return true;
+        }
+        if !check_collision_for_trace(
+            new_point_right1,
+            new_point_right2,
+            trace_width,
+            trace_clearance,
+            my_layer,
+        ){
+            // If no collision is detected, we can safely update the positions
+            optimized[i + 1].position = new_point_right1;
+            optimized[i + 2].position = new_point_right2;
+            optimized.remove(i + 3);
+            return true;
+        }
+        let length_to_trace = |length: FixedPoint| {
+            let start_position = p1 - dir1.to_fixed_vec2(length);
+            let end_position = p2 - dir1.to_fixed_vec2(length);
+            (start_position, end_position)
+        };
+        let length = binary_approach_to_obstacles(length_to_trace, FixedPoint::ZERO, length_0_1, check_collision_for_trace, trace_width, trace_clearance, my_layer);
+        if length == FixedPoint::ZERO {
+            continue; // no valid length found
+        }
+        optimized[i + 1].position = p1 - dir1.to_fixed_vec2(length);
+        optimized[i + 2].position = p2 - dir1.to_fixed_vec2(length);
+        return true;       
+    }
+    false
+}
+
+
+pub struct Line{
+    pub point: FixedVec2,
+    pub dir: FixedVec2,
+}
+impl Line{
+    pub fn new(point: FixedVec2, dir: FixedVec2) -> Self {
+        Line { point, dir }
+    }
+    pub fn intersection(&self, other: &Self) -> FixedPoint{
+        let x_numerator = -other.dir.y * (other.point.x - self.point.x) + other.dir.x * (other.point.y - self.point.y);
+        let x_denominator = -self.dir.x * other.dir.y + self.dir.y * other.dir.x;
+        assert!(x_denominator != FixedPoint::ZERO, "Lines are parallel, no intersection");
+        let x = x_numerator / x_denominator;
+        let result = self.point + self.dir * x;
+        let y = if other.dir.x != FixedPoint::ZERO {
+            (result.x - other.point.x) / other.dir.x
+        } else {
+            (result.y - other.point.y) / other.dir.y
+        };
+        assert!(other.point.x + other.dir.x * y == result.x && other.point.y + other.dir.y * y == result.y, "Intersection point does not lie on the other line");
+        result        
+    }
+}
+
+
+pub fn convex_and_merge(
+    optimized: &mut Vec<TraceAnchor>,
+    check_collision_for_trace: &dyn Fn(FixedVec2, FixedVec2, f32, f32, usize) -> bool,
+    trace_width: f32,
+    trace_clearance: f32,
+)-> bool{
+    for i in 0.. optimized.len() - 3{
+        let p0 = optimized[i].position;
+        let p1 = optimized[i + 1].position;
+        let p2 = optimized[i + 2].position;
+        let p3 = optimized[i + 3].position;
+        assert!(optimized[i].end_layer == optimized[i + 1].start_layer);
+        assert!(optimized[i + 1].end_layer == optimized[i + 2].start_layer);
+        assert!(optimized[i + 2].end_layer == optimized[i + 3].start_layer);
+        if optimized[i + 1].start_layer != optimized[i + 1].end_layer
+            || optimized[i + 2].start_layer != optimized[i + 2].end_layer{
+            continue;
+        }
+        let my_layer = optimized[i].end_layer;
+        // let dir0: Option<Direction> =  if i == 0 {
+        //     None
+        // } else {
+        //     Direction::from_points(optimized[i - 1].position, p0).unwrap()
+        // };
+        let dir1 = Direction::from_points(p0, p1).unwrap();
+        let dir2 = Direction::from_points(p1, p2).unwrap();
+        let dir3 = Direction::from_points(p2, p3).unwrap();
+        let left_spin = dir2.left_45_90_135(dir1) && dir3.left_45_90_135(dir2);
+        let right_spin = dir2.right_45_90_135(dir1) && dir3.right_45_90_135(dir2);
+        if left_spin || right_spin{
+
+        }
+        // let dir4 = if i == optimized.len() - 4 {None} else {Some(Direction::from_points(p3, optimized[i + 4].position).unwrap())};
+
+    }
+}
+
 pub fn try_cut_right_angle(
     optimized: &mut Vec<TraceAnchor>,
     check_collision_for_trace: &dyn Fn(FixedVec2, FixedVec2, f32, f32, usize) -> bool,
-    check_collision_for_via: &dyn Fn(FixedVec2, f32, f32, usize, usize) -> bool,
+    // check_collision_for_via: &dyn Fn(FixedVec2, f32, f32, usize, usize) -> bool,
     trace_width: f32,
     trace_clearance: f32,
 ) -> bool{
@@ -333,91 +544,7 @@ pub fn optimize_path(
             i = 0;
             {
                 let mut parallel_shift_success = false;            
-            while i < optimized.len() - 3 {
-                // Check for parallel segments that can be optimized
-                // trace shifting
-                let p0 = optimized[i].position;
-                let p1 = optimized[i + 1].position;
-                let p2 = optimized[i + 2].position;
-                let p3 = optimized[i + 3].position;
-
-                if optimized[i].end_layer == optimized[i + 1].start_layer
-                    && optimized[i + 1].start_layer == optimized[i + 1].end_layer
-                    && optimized[i + 1].end_layer == optimized[i + 2].start_layer
-                    && optimized[i + 2].start_layer == optimized[i + 2].end_layer
-                    && optimized[i + 2].end_layer == optimized[i + 3].start_layer
-                {
-                    let my_layer = optimized[i].end_layer;
-                    let dir0 =  if i == 0 {None} else {Some(Direction::from_points(optimized[i - 1].position, p0).unwrap())};
-                    let dir1 = Direction::from_points(p0, p1).unwrap();
-                    let dir2 = Direction::from_points(p1, p2).unwrap();
-                    let dir3 = Direction::from_points(p2, p3).unwrap();
-                    let dir4 = if i == optimized.len() - 4 {None} else {Some(Direction::from_points(p3, optimized[i + 4].position).unwrap())};
-
-                    if dir1 == dir3 && (dir0 == None || !is_convex(dir0.unwrap(), dir1, dir2)) && (dir4 == None || !is_convex(dir2, dir3, dir4.unwrap())){
-                        // debug
-                        if DISPLAY_OPTIMIZATION {
-                            println!(
-                                "Optimizing segments {}-{} and {}-{} due to parallelism",
-                                i,
-                                i + 1,
-                                i + 2,
-                                i + 3
-                            );
-                        }
-                        let new_point1 = FixedVec2 {
-                            x: p0.x + p2.x - p1.x,
-                            y: p0.y + p2.y - p1.y,
-                        };
-                        let new_point2 = FixedVec2 {
-                            x: p3.x - p2.x + p1.x,
-                            y: p3.y - p2.y + p1.y,
-                        };
-
-                        let flag1 =
-                            !check_collision_for_trace(p0, new_point1, trace_width, trace_clearance, my_layer)
-                                && !check_collision_for_trace(new_point1, p2, trace_width, trace_clearance, my_layer);
-                        let flag2 =
-                            !check_collision_for_trace(p1, new_point2, trace_width, trace_clearance, my_layer)
-                                && !check_collision_for_trace(new_point2, p3, trace_width, trace_clearance, my_layer);
-
-                        if flag1 {
-                            assert!(
-                                Direction::is_two_points_valid_direction(new_point1, p2),
-                                "New positions should form a valid direction"
-                            );
-                            assert!(
-                                Direction::is_two_points_valid_direction(p0, new_point1),
-                                "New positions should form a valid direction"
-                            );
-                            optimized[i + 1].position = new_point1;
-                            optimized.remove(i + 2);
-                            combine_success = true;
-                            optflag = true;
-                        } else if flag2 {
-                            assert!(
-                                Direction::is_two_points_valid_direction(new_point2, p3),
-                                "New positions should form a valid direction"
-                            );
-                            assert!(
-                                Direction::is_two_points_valid_direction(p1, new_point2),
-                                "New positions should form a valid direction"
-                            );
-                            optimized[i + 2].position = new_point2;
-                            optimized.remove(i + 1);
-                            combine_success = true;
-                            optflag = true;
-                        }
-                    }
-                }
-                i += 1;
-                if i >= optimized.len() - 3 {
-                    if combine_success {
-                        i = 0; // restart from the beginning if any optimization was made
-                        combine_success = false;
-                    }
-                }
-            }}
+            
 
 
             i = 1;
