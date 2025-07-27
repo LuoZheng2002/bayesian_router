@@ -1050,15 +1050,27 @@ impl AStarModel {
                     self.trace_clearance,
                     self.via_diameter,
                 );
-                // let trace_path = optimize_path(
-                //     &trace_path,
-                //     &|start, end, width, clearance, layer: usize| {
-                //         self.check_collision_for_trace(start, end, width, clearance, layer)
-                //     },
-                //     self.trace_width,
-                //     self.trace_clearance,
-                //     self.via_diameter,
-                // );
+                let check_collision_for_trace =
+                    |start: FixedVec2, end: FixedVec2, width: f32, clearance: f32, layer: usize| {
+                        self.check_collision_for_trace(start, end, width, clearance, layer)
+                    };
+                let check_collision_for_via =
+                    |position: FixedVec2, diameter: f32, clearance: f32, min_layer: usize, max_layer: usize| {
+                        for layer in min_layer..=max_layer {
+                            if self.check_collision_for_via(position, diameter, clearance, layer) {
+                                return true; // collision found
+                            }
+                        }
+                        false
+                    };
+                let trace_path = optimize_path(
+                    &trace_path,
+                    &check_collision_for_trace,
+                    &check_collision_for_via,
+                    self.trace_width,
+                    self.trace_clearance,
+                    self.via_diameter,
+                );
                 return Ok(AStarResult { trace_path });
             }
 

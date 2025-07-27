@@ -160,12 +160,129 @@ fn anchor_to_tracepath(
     }
 }
 
+pub fn try_cut_right_angle(
+    optimized: &mut Vec<TraceAnchor>,
+    check_collision_for_trace: &dyn Fn(FixedVec2, FixedVec2, f32, f32, usize) -> bool,
+    check_collision_for_via: &dyn Fn(FixedVec2, f32, f32, usize, usize) -> bool,
+    trace_width: f32,
+    trace_clearance: f32,
+) -> bool{
+    for i in 0..optimized.len() - 2 {
+        let p1 = optimized[i].position;
+        let p2 = optimized[i + 1].position;
+        let p3 = optimized[i + 2].position;
+        assert!(optimized[i].end_layer == optimized[i + 1].start_layer, "End layer of anchor {} should match start layer of anchor {}", i, i + 1);
 
+        if optimized[i + 1].start_layer != optimized[i + 1].end_layer
+        {
+            continue;
+        }
+        let dir1 = Direction::from_points(p1, p2).unwrap();
+        let dir2 = Direction::from_points(p2, p3).unwrap();
+        let my_layer = optimized[i].end_layer;
+
+        if is_right_angle(dir1, dir2) {
+            assert!(FixedPoint::max((p3 - p2).x.abs(), (p3 - p2).y.abs()) >= FixedPoint::DELTA);
+            assert!(FixedPoint::max((p1 - p2).x.abs(), (p1 - p2).y.abs()) >= FixedPoint::DELTA);
+         
+            let new_position1 = p2 - dir1.to_fixed_vec2(FixedPoint::DELTA);
+            let new_position2 = p2 + dir2.to_fixed_vec2(FixedPoint::DELTA);
+            assert!(
+                Direction::is_two_points_valid_direction(new_position1, new_position2),
+                "New positions should form a valid direction, but got {:?} and {:?}",
+                new_position1,
+                new_position2
+            );
+            if !check_collision_for_trace(
+                new_position1,
+                new_position2,
+                trace_width,
+                trace_clearance,
+                my_layer,
+            ) {
+                // total_length = total_length
+                //     - ((p2 - p1).length().to_num::<f64>()
+                //         + (p3 - p2).length().to_num::<f64>())
+                //     + (new_position1 - p1).length().to_num::<f64>()
+                //     + (p3 - new_position2).length().to_num::<f64>()
+                //     + (new_position2 - new_position1).length().to_num::<f64>();
+                if p1 == new_position1 && p3 == new_position2 {
+                    optimized.remove(i + 1);
+                } else if p3 == new_position2 {
+                    optimized[i + 1].position = new_position1;
+                } else if p1 == new_position1 {
+                    optimized[i + 1].position = new_position2;
+                } else {
+                    let new_anchor1 = TraceAnchor {
+                        position: new_position1,
+                        start_layer: my_layer,
+                        end_layer: my_layer,
+                    };
+                    optimized.insert(i + 1, new_anchor1);
+                    optimized[i + 2].position = new_position2;
+                }
+                optflag = true;
+            }
+            // let step = FixedPoint::min(FixedPoint::max((p3 - p2).x.abs(), (p3 - p2).y.abs()), FixedPoint::max((p1 - p2).x.abs(), (p1 - p2).y.abs()));
+            // let new_position1 = p2 - dir1.to_fixed_vec2(step);
+            // let new_position2 = p2 + dir2.to_fixed_vec2(step);
+            // assert!(
+            //     Direction::is_two_points_valid_direction(new_position1, new_position2),
+            //     "New positions should form a valid direction, but got {:?} and {:?}",
+            //     new_position1,
+            //     new_position2
+            // );
+            // if !check_collision(
+            //     new_position1,
+            //     new_position2,
+            //     trace_width,
+            //     trace_clearance,
+            //     my_layer,
+            // ){
+            //     if p1 == new_position1 && p2 == new_position2 {
+            //         optimized.remove(i + 1);
+            //         i -= 1;
+            //     } else if p1 == new_position1 {
+            //         optimized[i + 1].position = new_position2;
+            //     } else {
+            //         optimized[i + 1].position = new_position1;
+            //     }
+            //     optflag = true;
+            // }
+        }
+    }
+    todo!()
+}
+
+pub fn try_merge_path(optimized: &mut Vec<TraceAnchor>)->bool{
+    for i in 0..optimized.len() - 2 {
+        // Check for inline segments that can be optimized
+        let p1 = optimized[i].position;
+        let p2 = optimized[i + 1].position;
+        let p3 = optimized[i + 2].position;
+        assert!(optimized[i].end_layer == optimized[i + 1].start_layer, "End layer of anchor {} should match start layer of anchor {}", i, i + 1);
+
+        if optimized[i + 1].start_layer != optimized[i + 1].end_layer
+        {
+            continue;
+        }
+        let dir1 = Direction::from_points(p1, p2).unwrap();
+        let dir2 = Direction::from_points(p2, p3).unwrap();
+
+        // eliminate redundant anchors
+        if dir1 == dir2 {
+            optimized.remove(i + 1);
+            return true;
+        }        
+    }
+    false
+}
 
 
 pub fn optimize_path(
     trace_path: &TracePath,
-    check_collision: &dyn Fn(FixedVec2, FixedVec2, f32, f32, usize) -> bool,
+    check_collision_for_trace: &dyn Fn(FixedVec2, FixedVec2, f32, f32, usize) -> bool,
+    check_collision_for_via: &dyn Fn(FixedVec2, f32, f32, usize, usize) -> bool, // min, max
     trace_width: f32,
     trace_clearance: f32,
     via_diameter: f32,
@@ -181,14 +298,15 @@ pub fn optimize_path(
     let path = &trace_path.anchors.0;
     // 
 
-
-    if path.len() < 4 {
-        return trace_path.clone();
-    }
+    // - -
+    // if path.len() < 4 {
+    //     return trace_path.clone();
+    // }
 
 
 
     let mut optflag = true;
+
     let mut optcnt = 2;
 
 
@@ -197,119 +315,24 @@ pub fn optimize_path(
     }
     
     let mut optimized = path.clone();
-    let mut total_length = trace_path.total_length;
+    // let mut total_length = trace_path.total_length;
 
     while optflag && optcnt < 3 {
         optflag = false;
         optcnt += 1;
-        let mut success = false;
+        
         let mut i = 0;
-        while i < optimized.len() - 2 {
-            // Check for inline segments that can be optimized
-            let p1 = optimized[i].position;
-            let p2 = optimized[i + 1].position;
-            let p3 = optimized[i + 2].position;
 
-            if optimized[i].end_layer == optimized[i + 1].start_layer
-                && optimized[i + 1].start_layer == optimized[i + 1].end_layer
-                && optimized[i + 1].end_layer == optimized[i + 2].start_layer
-            {
-                let my_layer = optimized[i].end_layer;
-                let dir1 = Direction::from_points(p1, p2).unwrap();
-                let dir2 = Direction::from_points(p2, p3).unwrap();
+       { let mut combine_success = false;
+        while try_merge_path(&mut optimized){
 
-                // eliminate redundant anchors
-                if dir1 == dir2 {
-                    optimized.remove(i + 1);
-                    success = true;
-                    optflag = true;
-                }
-                // convert right angle
-                else if is_right_angle(dir1, dir2) {
-                    if FixedPoint::max((p3 - p2).x.abs(), (p3 - p2).y.abs()) > FixedPoint::DELTA
-                        && FixedPoint::max((p1 - p2).x.abs(), (p1 - p2).y.abs()) > FixedPoint::DELTA
-                    {
-                        let new_position1 = p2 - dir1.to_fixed_vec2(FixedPoint::DELTA);
-                        let new_position2 = p2 + dir2.to_fixed_vec2(FixedPoint::DELTA);
-                        assert!(
-                            Direction::is_two_points_valid_direction(new_position1, new_position2),
-                            "New positions should form a valid direction, but got {:?} and {:?}",
-                            new_position1,
-                            new_position2
-                        );
-                        if !check_collision(
-                            new_position1,
-                            new_position2,
-                            trace_width,
-                            trace_clearance,
-                            my_layer,
-                        ) {
-                            total_length = total_length
-                                - ((p2 - p1).length().to_num::<f64>()
-                                    + (p3 - p2).length().to_num::<f64>())
-                                + (new_position1 - p1).length().to_num::<f64>()
-                                + (p3 - new_position2).length().to_num::<f64>()
-                                + (new_position2 - new_position1).length().to_num::<f64>();
-                            if p1 == new_position1 && p3 == new_position2 {
-                                optimized.remove(i + 1);
-                                i -= 1;
-                            } else if p3 == new_position2 {
-                                optimized[i + 1].position = new_position1;
-                            } else if p1 == new_position1 {
-                                optimized[i + 1].position = new_position2;
-                            } else {
-                                let new_anchor1 = TraceAnchor {
-                                    position: new_position1,
-                                    start_layer: my_layer,
-                                    end_layer: my_layer,
-                                };
-                                optimized.insert(i + 1, new_anchor1);
-                                optimized[i + 2].position = new_position2;
-                            }
-                            optflag = true;
-                        }
-                    }else{
-                        let step = FixedPoint::min(FixedPoint::max((p3 - p2).x.abs(), (p3 - p2).y.abs()), FixedPoint::max((p1 - p2).x.abs(), (p1 - p2).y.abs()));
-                        let new_position1 = p2 - dir1.to_fixed_vec2(step);
-                        let new_position2 = p2 + dir2.to_fixed_vec2(step);
-                        assert!(
-                            Direction::is_two_points_valid_direction(new_position1, new_position2),
-                            "New positions should form a valid direction, but got {:?} and {:?}",
-                            new_position1,
-                            new_position2
-                        );
-                        if !check_collision(
-                            new_position1,
-                            new_position2,
-                            trace_width,
-                            trace_clearance,
-                            my_layer,
-                        ){
-                            if p1 == new_position1 && p2 == new_position2 {
-                                optimized.remove(i + 1);
-                                i -= 1;
-                            } else if p1 == new_position1 {
-                                optimized[i + 1].position = new_position2;
-                            } else {
-                                optimized[i + 1].position = new_position1;
-                            }
-                            optflag = true;
-                        }
-                    }
-                }
-            }
-            i += 1;
-            if i >= optimized.len() - 2 {
-                if success {
-                    i = 0; // restart from the beginning if any optimization was made
-                    success = false;
-                }
-            }
         }
+    }
 
         if OPTIMIZATION_PRO{
             i = 0;
-            success = false;
+            {
+                let mut parallel_shift_success = false;            
             while i < optimized.len() - 3 {
                 // Check for parallel segments that can be optimized
                 // trace shifting
@@ -352,11 +375,11 @@ pub fn optimize_path(
                         };
 
                         let flag1 =
-                            !check_collision(p0, new_point1, trace_width, trace_clearance, my_layer)
-                                && !check_collision(new_point1, p2, trace_width, trace_clearance, my_layer);
+                            !check_collision_for_trace(p0, new_point1, trace_width, trace_clearance, my_layer)
+                                && !check_collision_for_trace(new_point1, p2, trace_width, trace_clearance, my_layer);
                         let flag2 =
-                            !check_collision(p1, new_point2, trace_width, trace_clearance, my_layer)
-                                && !check_collision(new_point2, p3, trace_width, trace_clearance, my_layer);
+                            !check_collision_for_trace(p1, new_point2, trace_width, trace_clearance, my_layer)
+                                && !check_collision_for_trace(new_point2, p3, trace_width, trace_clearance, my_layer);
 
                         if flag1 {
                             assert!(
@@ -369,7 +392,7 @@ pub fn optimize_path(
                             );
                             optimized[i + 1].position = new_point1;
                             optimized.remove(i + 2);
-                            success = true;
+                            combine_success = true;
                             optflag = true;
                         } else if flag2 {
                             assert!(
@@ -382,19 +405,19 @@ pub fn optimize_path(
                             );
                             optimized[i + 2].position = new_point2;
                             optimized.remove(i + 1);
-                            success = true;
+                            combine_success = true;
                             optflag = true;
                         }
                     }
                 }
                 i += 1;
                 if i >= optimized.len() - 3 {
-                    if success {
+                    if combine_success {
                         i = 0; // restart from the beginning if any optimization was made
-                        success = false;
+                        combine_success = false;
                     }
                 }
-            }
+            }}
 
 
             i = 1;
@@ -448,8 +471,8 @@ pub fn optimize_path(
                             );
 
                             if (p0 == new_point1
-                                || !check_collision(p0, new_point1, trace_width, trace_clearance, my_layer))
-                                && !check_collision(
+                                || !check_collision_for_trace(p0, new_point1, trace_width, trace_clearance, my_layer))
+                                && !check_collision_for_trace(
                                     new_point1,
                                     new_point2,
                                     trace_width,
@@ -457,7 +480,7 @@ pub fn optimize_path(
                                     my_layer,
                                 )
                                 && (new_point2 == p3
-                                    || !check_collision(
+                                    || !check_collision_for_trace(
                                         new_point2,
                                         p3,
                                         trace_width,
