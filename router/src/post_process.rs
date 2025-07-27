@@ -498,12 +498,12 @@ pub fn try_convex_and_merge(
             optimized[i + 1].position = new_point1;
             optimized[i + 2].position = new_point2;
             if relative_distance_1 < relative_distance_2 && p0 == new_point1{
-                optimized.remove(i);
+                optimized.remove(i + 1);
             }else if relative_distance_1 > relative_distance_2 && p3 == new_point2{
-                optimized.remove(i + 3);
+                optimized.remove(i + 2);
             }else if p0 == new_point1 && p3 == new_point2 {
-                optimized.remove(i + 3);
-                optimized.remove(i);                
+                optimized.remove(i + 2);
+                optimized.remove(i + 1);                
             }            
             println!("Successfully convex and merged");
             return true;
