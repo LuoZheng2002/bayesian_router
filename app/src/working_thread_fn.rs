@@ -15,7 +15,7 @@ pub fn working_thread_fn(pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>) {
     println!("Working thread started");
     // let pcb_problem = pcb_problem2();
 
-    let dsn_file_content = std::fs::read_to_string("examples/ex5_differential_amplifier.dsn").unwrap();
+    let dsn_file_content = std::fs::read_to_string("examples/ex3_DRV10987V01.dsn").unwrap();
     let dsn_struct = match parse_start_to_dsn_struct(dsn_file_content.clone()) {
         Ok(structure) => structure,
         Err(e) => {
@@ -31,7 +31,7 @@ pub fn working_thread_fn(pcb_render_model: Arc<Mutex<Option<PcbRenderModel>>>) {
         }
     };
     // pcb_problem.num_layers = 1; // Set to 1 for single layer PCB
-    let result = solve_pcb_problem(&pcb_problem, pcb_render_model.clone(), true);
+    let result = solve_pcb_problem(&pcb_problem, pcb_render_model.clone(), false);
     let result = match result {
         Ok(result) => {
             println!("PCB problem solved successfully");
